@@ -1,25 +1,5 @@
 use std::{error::Error, str::Chars};
-
-#[derive(Debug, PartialEq)]
-pub struct ConventionalCommit {
-    pub commit_type: Node,
-    pub scope: Option<Node>,
-    pub description: Node,
-    pub body: Option<Node>,
-    pub footer: Option<Node>,
-}
-
-impl ConventionalCommit {
-    pub fn new() -> Self {
-        ConventionalCommit {
-            commit_type: Node::new(TokenType::CommitType, String::new()),
-            scope: None,
-            description: Node::new(TokenType::Description, String::new()),
-            body: None,
-            footer: None,
-        }
-    }
-}
+use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
 pub enum AngularConventionTypes {
@@ -52,10 +32,7 @@ impl From<&str> for AngularConventionTypes {
             "ci" => AngularConventionTypes::Ci,
             "chore" => AngularConventionTypes::Chore,
             "revert" => AngularConventionTypes::Revert,
-            _ => {
-                println!("unknown");
-                AngularConventionTypes::Unknown
-            }
+            _ => AngularConventionTypes::Unknown,
         }
     }
 }
@@ -102,23 +79,6 @@ impl From<Literal> for char {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Token {
-    token_type: TokenType,
-    value: String,
-}
-
-impl Token {
-    pub fn new(token_type: TokenType, value: String) -> Self {
-        Token { token_type, value }
-    }
-}
-
-pub struct Lexer {
-    input: String,
-    position: usize,
-}
-
-#[derive(Debug, PartialEq)]
 pub enum TokenType {
     CommitType,
     Scope,
@@ -129,18 +89,6 @@ pub enum TokenType {
     Exclamation,
     NewLine,
     Space,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Node {
-    token_type: TokenType,
-    value: String,
-}
-
-impl Node {
-    pub fn new(token_type: TokenType, value: String) -> Self {
-        Node { token_type, value }
-    }
 }
 
 fn is_commit_type(value: &str) -> Result<bool, Box<dyn Error>> {
@@ -156,7 +104,7 @@ fn is_scope(value: &str) -> bool {
 }
 
 fn is_description(value: &str) -> bool {
-    value.starts_with(": ")
+    !value.is_empty()
 }
 
 fn is_body(value: &str) -> bool {
@@ -169,12 +117,29 @@ fn is_footer(value: &str) -> bool {
     value.starts_with("BREAKING-CHANGE:")
 }
 
+#[derive(Debug, PartialEq)]
+pub struct Node {
+    token_type: TokenType,
+    value: String,
+}
+
+impl Node {
+    pub fn new(token_type: TokenType, value: String) -> Self {
+        Node { token_type, value }
+    }
+}
+
+pub struct Lexer {
+    input: String,
+    position: usize,
+}
+
 impl Lexer {
     pub fn new(input: String) -> Self {
         Lexer { input, position: 0 }
     }
 
-    pub fn next_token(&mut self) -> Result<Option<Token>, Box<dyn Error>> {
+    pub fn next_token(&mut self) -> Result<Option<Node>, Box<dyn Error>> {
         if self.position >= self.input.len() {
             return Ok(None);
         }
@@ -208,45 +173,108 @@ impl Lexer {
                 token_type = TokenType::Body;
             } else if is_footer(&token_value) {
                 token_type = TokenType::Footer;
+            } else {
+                token_type = TokenType::Space; // TODO: This is a hack, fix it
+                println!("Unknown token type: {}", token_value);
             }
         }
 
-        Ok(Some(Token::new(token_type, token_value)))
+        Ok(Some(Node::new(token_type, token_value)))
     }
 }
+
+///------------ Conventional Commit ------------ ///
+///
+
+#[derive(Debug, PartialEq)]
+pub struct ConventionalCommit {
+    pub commit_type: Node,
+    pub scope: Option<Node>,
+    pub description: Node,
+    pub body: Option<Node>,
+    pub footer: Option<Node>,
+}
+
+impl ConventionalCommit {
+    fn from(s: &str) -> Self {
+
+        let mut _graph: HashMap<i8, TokenType> = HashMap::new(); // maybe track the order of the tokens in the commit message here as well as the token type like a graph or something? idk
+
+        let mut lexer = Lexer::new(s.to_string());
+
+        let mut commit_type = Node::new(TokenType::CommitType, String::new());
+        let mut scope = Node::new(TokenType::Scope, String::new());
+        let mut description = Node::new(TokenType::Description, String::new());
+        let mut body = Node::new(TokenType::Body, String::new());
+        let mut footer = Node::new(TokenType::Footer, String::new());
+
+        let mut current_token_type = TokenType::CommitType;
+
+        while let Some(token) = lexer.next_token().unwrap() {
+            if token.token_type == TokenType::Space {
+                continue; // Ignore spaces
+            }
+
+            if token.token_type == TokenType::NewLine {
+                if current_token_type == TokenType::Description {
+                    current_token_type = TokenType::Body;
+                }
+                continue; // Ignore newlines
+            }
+
+            match current_token_type {
+                TokenType::CommitType => {
+                    commit_type.token_type = TokenType::CommitType;
+                    commit_type.value.push_str(&token.value);
+                }
+                TokenType::Scope => {
+                    scope.token_type = TokenType::Scope;
+                    scope.value.push_str(&token.value);
+                }
+                TokenType::Description => {
+                    description.token_type = TokenType::Description;
+                    description.value.push_str(&token.value);
+                }
+                TokenType::Body => {
+                    body.token_type = TokenType::Body;
+                    body.value.push_str(&token.value);
+                }
+                TokenType::Footer => {
+                    footer.token_type = TokenType::Footer;
+                    footer.value.push_str(&token.value);
+                }
+                _ => {}
+            }
+        }
+
+        ConventionalCommit {
+            commit_type,
+            scope: Some(scope),
+            description,
+            body: Some(body),
+            footer: Some(footer),
+        }
+    }
+}
+
+impl From<String> for ConventionalCommit {
+    fn from(s: String) -> Self {
+        ConventionalCommit::from(s.as_str())
+    }
+}
+
+impl ConventionalCommit {}
 
 #[cfg(test)]
 #[test]
 fn test() {
-    let input = "feat: implement a new feature".to_string();
-    let mut lexer = Lexer::new(input);
+    let input = "feat: implement a new feature";
 
-    let commit = ConventionalCommit::new(
-        Node::new(TokenType::CommitType, "feat".to_string()),
-        None,
-        Node::new(TokenType::Description, "implement a new feature".to_string()),
-        None,
-        None,
-    );
+    let commit = ConventionalCommit::from(input);
 
-
-    while let Some(token) = lexer.next_token().unwrap() {
-        match token.token_type {
-            TokenType::CommitType => {
-                commit.token_type = TokenType::CommitType;
-                commit.value.push_str(&token.value);
-            }
-            TokenType::Scope => {
-                scope.token_type = TokenType::Scope;
-                scope.value.push_str(&token.value);
-            }
-            TokenType::Description => {
-                description.token_type = TokenType::Description;
-                description.value.push_str(&token.value);
-            }
-            _ => {}
-        }
-    }
-
-    println!("{:?}, {:?}, {:?}", commit, scope, description);
+    assert_eq!(commit.commit_type.value, "feat");
+    assert_eq!(commit.scope.unwrap().value, "");
+    assert_eq!(commit.description.value, "implement a new feature");
+    assert_eq!(commit.body.unwrap().value, "");
+    assert_eq!(commit.footer.unwrap().value, "");
 }
