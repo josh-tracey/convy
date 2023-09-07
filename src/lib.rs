@@ -1,3 +1,4 @@
+use std::sync::RwLock;
 use std::{error::Error, str::Chars};
 
 const LITERAL_COLON: char = ':';
@@ -76,7 +77,11 @@ pub enum TokenType {
     Space,
 }
 
-fn is_commit_type(value: &str, prev_token: &Option<Node>, next_token: Option<Node>) -> Result<bool, Box<dyn Error>> {
+fn is_commit_type(
+    value: &str,
+    _prev_token: &Option<Node>,
+    next_token: Option<Node>,
+) -> Result<bool, Box<dyn Error>> {
     // Convert the value to AngularConventionTypes enum
     let commit_type = AngularConventionTypes::from(value);
 
@@ -93,21 +98,17 @@ fn is_commit_type(value: &str, prev_token: &Option<Node>, next_token: Option<Nod
     Ok(is_feat)
 }
 
-
 fn is_scope(value: &str, prev_token: &Option<Node>, next_token: Option<Node>) -> bool {
     // A scope is considered valid if it starts with "(" and ends with ")"
     // and contains only valid characters (no spaces, colons, exclamations, or newlines)
-        !value.chars().any(|c| c == LITERAL_SPACE
-        || c == LITERAL_COLON
-        || c == LITERAL_EXCLAMATION
-        || c == LITERAL_NEWLINE)
-        && next_token.map_or(false, |node| {
-            node.token_type == TokenType::Colon
-                || node.token_type == TokenType::Exclamation
-                || node.token_type == TokenType::RParen
-        })
+    !value.chars().any(|c| {
+        c == LITERAL_SPACE || c == LITERAL_COLON || c == LITERAL_EXCLAMATION || c == LITERAL_NEWLINE
+    }) && next_token.map_or(false, |node| {
+        node.token_type == TokenType::Colon
+            || node.token_type == TokenType::Exclamation
+            || node.token_type == TokenType::RParen
+    })
 }
-
 
 fn is_description(value: &str, prev_token: &Option<Node>, next_token: Option<Node>) -> bool {
     !value.is_empty()
@@ -163,37 +164,57 @@ impl Node {
     }
 }
 
-pub struct Lexer {
-    input: String,
-    prev_token: Option<Node>,
-    position: usize,
+pub struct Parser<'a> {
+    input: RwLock<&'a str>,
+    position: RwLock<&'a usize>,
 }
 
-impl Lexer {
+impl<'a> Parser<'a> {
+    fn new(input: String) -> Parser<'a> {
+        Parser { 
+            input: RwLock::new(&input),
+            position: RwLock::new(&0), 
+        }
+    }
+
+}
+
+pub struct Lexer<'a> {
+    prev_token: Option<Node>,
+    parser: Parser<'a>,
+}
+
+impl Lexer<'_> {
     pub fn new(input: String) -> Self {
-        Lexer { input, position: 0, prev_token: None}
+        Lexer {
+            prev_token: None,
+            parser: Parser::new(input),
+        }
     }
 
     pub fn next_token(&self) -> Result<Option<Node>, Box<dyn Error>> {
-        if self.position >= self.input.len() {
+        let input = self.parser.input.try_read()?;
+        let mut position = self.parser.position.try_write()?;
+
+        if *position >= &mut input.len() {
             return Ok(None);
         }
 
         let mut token_value = String::new();
         let mut token_type = TokenType::Space;
 
-        while let Some(c) = self.input.chars().nth(self.position) {
+        while let Some(c) = input.chars().nth(**position) {
             match c {
                 LITERAL_COLON | LITERAL_EXCLAMATION | LITERAL_NEWLINE | LITERAL_SPACE
                 | LITERAL_LPAREN | LITERAL_RPAREN => {
                     // Delimiter or whitespace encountered, break the loop
-                    self.position += 1;
+                    **position += 1;
                     break;
                 }
                 _ => {
                     // Accumulate characters for the token value
                     token_value.push(c);
-                    self.position += 1;
+                    **position += 1;
                 }
             }
         }
@@ -229,11 +250,61 @@ impl Lexer {
         Ok(Some(Node::new(token_type, token_value)))
     }
 
-    pub fn peek_token(&mut self) -> Result<Option<Node>, Box<dyn Error>> {
-        let current_position = self.position;
-        let token = self.next_token()?;
-        self.position = current_position;
-        Ok(token)
+    pub fn peek_token(&self) -> Result<Option<Node>, Box<dyn Error>> {
+        let position = self.parser.position.try_read()?;
+        let input = self.parser.input.try_read()?;
+        let mut current_position = position.clone();
+        if current_position >= input.len() {
+            return Ok(None);
+        }
+
+        let mut token_value = String::new();
+        let mut token_type = TokenType::Space;
+
+        while let Some(c) = input.chars().nth(current_position) {
+            match c {
+                LITERAL_COLON | LITERAL_EXCLAMATION | LITERAL_NEWLINE | LITERAL_SPACE
+                | LITERAL_LPAREN | LITERAL_RPAREN => {
+                    // Delimiter or whitespace encountered, break the loop
+                    break;
+                }
+                _ => {
+                    // Accumulate characters for the token value
+                    token_value.push(c);
+                    current_position += 1;
+                }
+            }
+        }
+        if !token_value.is_empty() {
+            // Determine the token type based on the accumulated value
+            if is_commit_type(&token_value, &None, self.peek_token()?)? {
+                token_type = TokenType::CommitType;
+            } else if is_scope(&token_value, &None, self.peek_token()?) {
+                token_type = TokenType::Scope;
+            } else if is_description(&token_value, &None, self.peek_token()?) {
+                token_type = TokenType::Description;
+            } else if is_body(&token_value, &None, self.peek_token()?) {
+                token_type = TokenType::Body;
+            } else if is_footer(&token_value, &None, self.peek_token()?) {
+                token_type = TokenType::Footer;
+            } else if is_colon(&token_value) {
+                token_type = TokenType::Colon;
+            } else if is_exclamation(&token_value) {
+                token_type = TokenType::Exclamation;
+            } else if is_newline(&token_value) {
+                token_type = TokenType::NewLine;
+            } else if is_space(&token_value) {
+                token_type = TokenType::Space;
+            } else if is_lparen(&token_value) {
+                token_type = TokenType::LParen;
+            } else if is_rparen(&token_value) {
+                token_type = TokenType::RParen;
+            } else {
+                println!("Unknown token type: {:?}??", token_type);
+            }
+        }
+
+        Ok(Some(Node::new(token_type, token_value)))
     }
 }
 
@@ -249,10 +320,9 @@ pub struct ConventionalCommit {
     pub footer: Option<Node>,
 }
 
-
 impl From<&str> for ConventionalCommit {
     fn from(s: &str) -> Self {
-        let mut lexer = Lexer::new(s.to_string());
+        let lexer = Lexer::new(s.to_string());
 
         let mut commit_type = Node::new(TokenType::CommitType, String::new());
         let mut scope = None;
@@ -261,8 +331,14 @@ impl From<&str> for ConventionalCommit {
         let mut footer = None;
 
         let mut current_field = &mut description.clone(); // Start with the description field
+                                                          //
 
-        while let Some(token) = lexer.next_token().unwrap() {
+        let t = match lexer.next_token() {
+            Ok(t) => t,
+            Err(e) => panic!("Error: {:?}", e),
+        };
+
+        while let Some(token) = t.clone() {
             match &token.token_type {
                 TokenType::CommitType => {
                     commit_type.token_type = TokenType::CommitType;
