@@ -1,413 +1,70 @@
-use std::sync::RwLock;
-use std::{error::Error, str::Chars};
 
-const LITERAL_COLON: char = ':';
-const LITERAL_LPAREN: char = '(';
-const LITERAL_RPAREN: char = ')';
-const LITERAL_NEWLINE: char = '\n';
-const LITERAL_SPACE: char = ' ';
-const LITERAL_EXCLAMATION: char = '!';
-
-#[derive(Debug, PartialEq)]
-pub enum AngularConventionTypes {
-    Feat,
-    Fix,
-    Docs,
-    Style,
-    Refactor,
-    Perf,
-    Test,
-    Build,
-    Ci,
-    Chore,
-    Revert,
-    Unknown,
-}
-
-impl From<&str> for AngularConventionTypes {
-    fn from(s: &str) -> Self {
-        println!("{}", s);
-        match s {
-            "feat" => AngularConventionTypes::Feat,
-            "fix" => AngularConventionTypes::Fix,
-            "docs" => AngularConventionTypes::Docs,
-            "style" => AngularConventionTypes::Style,
-            "refactor" => AngularConventionTypes::Refactor,
-            "perf" => AngularConventionTypes::Perf,
-            "test" => AngularConventionTypes::Test,
-            "build" => AngularConventionTypes::Build,
-            "ci" => AngularConventionTypes::Ci,
-            "chore" => AngularConventionTypes::Chore,
-            "revert" => AngularConventionTypes::Revert,
-            _ => AngularConventionTypes::Unknown,
-        }
-    }
-}
-
-impl<'a> From<Chars<'a>> for AngularConventionTypes {
-    fn from(s: Chars) -> Self {
-        AngularConventionTypes::from(s.as_str())
-    }
-}
-
-impl From<String> for AngularConventionTypes {
-    fn from(s: String) -> Self {
-        AngularConventionTypes::from(s.as_str())
-    }
-}
-
-impl From<&String> for AngularConventionTypes {
-    fn from(s: &String) -> Self {
-        AngularConventionTypes::from(s.as_str())
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum TokenType {
-    CommitType,
-    Scope,
-    Description,
-    Body,
-    LParen,
-    RParen,
-    Footer,
-    Colon,
-    Exclamation,
-    NewLine,
-    Space,
-}
-
-fn is_commit_type(
-    value: &str,
-    _prev_token: &Option<Node>,
-    next_token: Option<Node>,
-) -> Result<bool, Box<dyn Error>> {
-    // Convert the value to AngularConventionTypes enum
-    let commit_type = AngularConventionTypes::from(value);
-
-    // Check if it's equal to AngularConventionTypes::Feat and the next token is a colon
-    let is_feat = commit_type == AngularConventionTypes::Feat
-        && next_token.map_or(false, |node| {
-            node.token_type == TokenType::Colon
-                || node.token_type == TokenType::Exclamation
-                || node.token_type == TokenType::LParen
-                || node.token_type == TokenType::RParen
-                || node.token_type == TokenType::NewLine
-        });
-
-    Ok(is_feat)
-}
-
-fn is_scope(value: &str, prev_token: &Option<Node>, next_token: Option<Node>) -> bool {
-    // A scope is considered valid if it starts with "(" and ends with ")"
-    // and contains only valid characters (no spaces, colons, exclamations, or newlines)
-    !value.chars().any(|c| {
-        c == LITERAL_SPACE || c == LITERAL_COLON || c == LITERAL_EXCLAMATION || c == LITERAL_NEWLINE
-    }) && next_token.map_or(false, |node| {
-        node.token_type == TokenType::Colon
-            || node.token_type == TokenType::Exclamation
-            || node.token_type == TokenType::RParen
-    })
-}
-
-fn is_description(value: &str, prev_token: &Option<Node>, next_token: Option<Node>) -> bool {
-    !value.is_empty()
-}
-
-fn is_body(value: &str, prev_token: &Option<Node>, next_token: Option<Node>) -> bool {
-    value.starts_with("\n\n")
-        || value.starts_with("\n") && value.ends_with("\n\n")
-        || value.ends_with("\n")
-}
-
-fn is_footer(value: &str, prev_token: &Option<Node>, next_token: Option<Node>) -> bool {
-    value.starts_with("BREAKING-CHANGE:")
-}
-
-fn is_colon(value: &str) -> bool {
-    value == LITERAL_COLON.to_string()
-}
-
-fn is_exclamation(value: &str) -> bool {
-    value == LITERAL_EXCLAMATION.to_string()
-}
-
-fn is_newline(value: &str) -> bool {
-    value == LITERAL_NEWLINE.to_string()
-}
-
-fn is_space(value: &str) -> bool {
-    value == LITERAL_SPACE.to_string()
-}
-
-fn is_lparen(value: &str) -> bool {
-    value == LITERAL_LPAREN.to_string()
-}
-
-fn is_rparen(value: &str) -> bool {
-    value == LITERAL_RPAREN.to_string()
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Node {
-    token_type: TokenType,
-    value: String,
-}
-
-impl Node {
-    pub fn new(token_type: TokenType, value: String) -> Self {
-        Node { token_type, value }
-    }
-
-    pub fn clean(&mut self) {
-        self.value = self.value.trim().to_string();
-    }
-}
-
-pub struct Parser<'a> {
-    input: RwLock<&'a str>,
-    position: RwLock<&'a usize>,
-}
-
-impl<'a> Parser<'a> {
-    fn new(input: String) -> Parser<'a> {
-        Parser { 
-            input: RwLock::new(&input),
-            position: RwLock::new(&0), 
-        }
-    }
-
-}
-
-pub struct Lexer<'a> {
-    prev_token: Option<Node>,
-    parser: Parser<'a>,
-}
-
-impl Lexer<'_> {
-    pub fn new(input: String) -> Self {
-        Lexer {
-            prev_token: None,
-            parser: Parser::new(input),
-        }
-    }
-
-    pub fn next_token(&self) -> Result<Option<Node>, Box<dyn Error>> {
-        let input = self.parser.input.try_read()?;
-        let mut position = self.parser.position.try_write()?;
-
-        if *position >= &mut input.len() {
-            return Ok(None);
-        }
-
-        let mut token_value = String::new();
-        let mut token_type = TokenType::Space;
-
-        while let Some(c) = input.chars().nth(**position) {
-            match c {
-                LITERAL_COLON | LITERAL_EXCLAMATION | LITERAL_NEWLINE | LITERAL_SPACE
-                | LITERAL_LPAREN | LITERAL_RPAREN => {
-                    // Delimiter or whitespace encountered, break the loop
-                    **position += 1;
-                    break;
-                }
-                _ => {
-                    // Accumulate characters for the token value
-                    token_value.push(c);
-                    **position += 1;
-                }
-            }
-        }
-        if !token_value.is_empty() {
-            // Determine the token type based on the accumulated value
-            if is_commit_type(&token_value, &self.prev_token, self.peek_token()?)? {
-                token_type = TokenType::CommitType;
-            } else if is_scope(&token_value, &self.prev_token, self.peek_token()?) {
-                token_type = TokenType::Scope;
-            } else if is_description(&token_value, &self.prev_token, self.peek_token()?) {
-                token_type = TokenType::Description;
-            } else if is_body(&token_value, &self.prev_token, self.peek_token()?) {
-                token_type = TokenType::Body;
-            } else if is_footer(&token_value, &self.prev_token, self.peek_token()?) {
-                token_type = TokenType::Footer;
-            } else if is_colon(&token_value) {
-                token_type = TokenType::Colon;
-            } else if is_exclamation(&token_value) {
-                token_type = TokenType::Exclamation;
-            } else if is_newline(&token_value) {
-                token_type = TokenType::NewLine;
-            } else if is_space(&token_value) {
-                token_type = TokenType::Space;
-            } else if is_lparen(&token_value) {
-                token_type = TokenType::LParen;
-            } else if is_rparen(&token_value) {
-                token_type = TokenType::RParen;
-            } else {
-                println!("Unknown token type: {:?}??", token_type);
-            }
-        }
-
-        Ok(Some(Node::new(token_type, token_value)))
-    }
-
-    pub fn peek_token(&self) -> Result<Option<Node>, Box<dyn Error>> {
-        let position = self.parser.position.try_read()?;
-        let input = self.parser.input.try_read()?;
-        let mut current_position = position.clone();
-        if current_position >= input.len() {
-            return Ok(None);
-        }
-
-        let mut token_value = String::new();
-        let mut token_type = TokenType::Space;
-
-        while let Some(c) = input.chars().nth(current_position) {
-            match c {
-                LITERAL_COLON | LITERAL_EXCLAMATION | LITERAL_NEWLINE | LITERAL_SPACE
-                | LITERAL_LPAREN | LITERAL_RPAREN => {
-                    // Delimiter or whitespace encountered, break the loop
-                    break;
-                }
-                _ => {
-                    // Accumulate characters for the token value
-                    token_value.push(c);
-                    current_position += 1;
-                }
-            }
-        }
-        if !token_value.is_empty() {
-            // Determine the token type based on the accumulated value
-            if is_commit_type(&token_value, &None, self.peek_token()?)? {
-                token_type = TokenType::CommitType;
-            } else if is_scope(&token_value, &None, self.peek_token()?) {
-                token_type = TokenType::Scope;
-            } else if is_description(&token_value, &None, self.peek_token()?) {
-                token_type = TokenType::Description;
-            } else if is_body(&token_value, &None, self.peek_token()?) {
-                token_type = TokenType::Body;
-            } else if is_footer(&token_value, &None, self.peek_token()?) {
-                token_type = TokenType::Footer;
-            } else if is_colon(&token_value) {
-                token_type = TokenType::Colon;
-            } else if is_exclamation(&token_value) {
-                token_type = TokenType::Exclamation;
-            } else if is_newline(&token_value) {
-                token_type = TokenType::NewLine;
-            } else if is_space(&token_value) {
-                token_type = TokenType::Space;
-            } else if is_lparen(&token_value) {
-                token_type = TokenType::LParen;
-            } else if is_rparen(&token_value) {
-                token_type = TokenType::RParen;
-            } else {
-                println!("Unknown token type: {:?}??", token_type);
-            }
-        }
-
-        Ok(Some(Node::new(token_type, token_value)))
-    }
-}
-
-///------------ Conventional Commit ------------ ///
+/// # Commit Message Parser
 ///
+/// This module provides a parser for commit messages following the Conventional Commits specification.
+///
+/// ## Conventional Commits Specification
+///
+/// Commit messages processed by this parser adhere to the following rules:
+///
+/// - Commits MUST be prefixed with a type, which consists of a noun (e.g., feat, fix), followed by the
+///   OPTIONAL scope, OPTIONAL '!', and REQUIRED terminal colon and space.
+/// - The type 'feat' MUST be used when a commit adds a new feature to your application or library.
+/// - The type 'fix' MUST be used when a commit represents a bug fix for your application.
+/// - A scope MAY be provided after a type. A scope MUST consist of a noun describing a section of the codebase
+///   surrounded by parentheses, e.g., fix(parser):
+/// - A description MUST immediately follow the colon and space after the type/scope prefix. The description is
+///   a short summary of the code changes, e.g., fix: array parsing issue when multiple spaces were contained in string.
+/// - A longer commit body MAY be provided after the short description, providing additional contextual information
+///   about the code changes. The body MUST begin one blank line after the description.
+/// - A commit body is free-form and MAY consist of any number of newline separated paragraphs.
+/// - One or more footers MAY be provided one blank line after the body. Each footer MUST consist of a word token,
+///   followed by either a ': ' or ' # ' separator, followed by a string value (this is inspired by the git trailer convention).
+/// - A footer’s token MUST use '-' in place of whitespace characters, e.g., Acked-by (this helps differentiate the footer
+///   section from a multi-paragraph body). An exception is made for BREAKING CHANGE, which MAY also be used as a token.
+/// - A footer’s value MAY contain spaces and newlines, and parsing MUST terminate when the next valid footer token/separator
+///   pair is observed.
+/// - Breaking changes MUST be indicated in the type/scope prefix of a commit, or as an entry in the footer.
+/// - If included as a footer, a breaking change MUST consist of the uppercase text BREAKING CHANGE, followed by a colon, space,
+///   and description, e.g., BREAKING CHANGE: environment variables now take precedence over config files.
+/// - If included in the type/scope prefix, breaking changes MUST be indicated by a '!' immediately before the ':'. If '!' is used,
+///   BREAKING CHANGE: MAY be omitted from the footer section, and the commit description SHALL be used to describe the breaking change.
+/// - Types other than feat and fix MAY be used in your commit messages, e.g., docs: update ref docs.
+/// - The units of information that make up Conventional Commits MUST NOT be treated as case sensitive by implementors, with the
+///   exception of BREAKING CHANGE which MUST be uppercase.
+/// - BREAKING-CHANGE MUST be synonymous with BREAKING CHANGE, when used as a token in a footer.
+///
+///
+/// For more information on Conventional Commits, visit [the official specification](https://conventionalcommits.org).
+///
+/// For implementation details and usage examples, see the individual function and struct documentation.
 
-#[derive(Debug, PartialEq)]
-pub struct ConventionalCommit {
-    pub commit_type: Node,
-    pub scope: Option<Node>,
-    pub description: Node,
-    pub body: Option<Node>,
-    pub footer: Option<Node>,
-}
 
-impl From<&str> for ConventionalCommit {
-    fn from(s: &str) -> Self {
-        let lexer = Lexer::new(s.to_string());
-
-        let mut commit_type = Node::new(TokenType::CommitType, String::new());
-        let mut scope = None;
-        let mut description = Node::new(TokenType::Description, String::new());
-        let mut body = None;
-        let mut footer = None;
-
-        let mut current_field = &mut description.clone(); // Start with the description field
-                                                          //
-
-        let t = match lexer.next_token() {
-            Ok(t) => t,
-            Err(e) => panic!("Error: {:?}", e),
-        };
-
-        while let Some(token) = t.clone() {
-            match &token.token_type {
-                TokenType::CommitType => {
-                    commit_type.token_type = TokenType::CommitType;
-                    commit_type.value.push_str(&token.value);
-                }
-                TokenType::Scope => {
-                    scope = Some(Node::new(TokenType::Scope, token.value));
-                }
-                TokenType::Description => {
-                    description.token_type = TokenType::Description;
-                    description.value.push_str(&format!("{} ", token.value));
-                }
-                TokenType::Body => {
-                    body = Some(Node::new(TokenType::Body, token.value));
-                    current_field = body.as_mut().unwrap();
-                }
-                TokenType::Footer => {
-                    footer = Some(Node::new(TokenType::Footer, token.value));
-                    current_field = footer.as_mut().unwrap();
-                }
-                _ => {
-                    current_field.value.push_str(&format!("{} ", &token.value));
-                }
-            }
-        }
-
-        commit_type.clean();
-        description.clean();
-        if let Some(body_node) = &mut body {
-            body_node.clean();
-        }
-        if let Some(footer_node) = &mut footer {
-            footer_node.clean();
-        }
-
-        ConventionalCommit {
-            commit_type,
-            scope,
-            description,
-            body,
-            footer,
-        }
-    }
-}
-impl From<String> for ConventionalCommit {
-    fn from(s: String) -> Self {
-        ConventionalCommit::from(s.as_str())
-    }
-}
-
-impl ConventionalCommit {}
+pub mod lexer;
+pub mod syntax;
 
 #[cfg(test)]
 #[test]
 fn test() {
-    let input = r#"feat(deps)!: implement a new feature
+    use crate::syntax::ConventionalCommit;
 
-    This is a body
+    let input = r#"feat: add support for schemas, triggers, and task to app and graphql
 
-    BREAKING-CHANGE: this is a breaking change This is a footer
+The main purpose of this group of work was to add support for clients to
+be able to interact with the system with out having direct access to the
+core.
+
+This way it is more secure and extendable.
+
+Triggers can be added in the database with custom schemas that provide
+unique input fields per trigger if config is required when setting up.
+
+Then Tasks are similar and provide the same functionality.
+
+Both Triggers and Tasks can be later mapped by a service / endpoint on
+creation mutation to allow for creating Rules in the rusty reactor db
+for execution.
     "#;
 
-    let commit = ConventionalCommit::from(input);
-
-    println!("\nConventionalCommit \ncommit_type: {:?} \nscope: {:?} \ndescription: {:?} \nbody: {:?} \nfooter: {:?}\n",
-      commit.commit_type,
-      commit.scope,
-      commit.description,
-      commit.body,
-      commit.footer
-    );
+    ConventionalCommit::new(input).unwrap();
 }
