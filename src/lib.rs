@@ -41,30 +41,4 @@
 
 
 pub mod lexer;
-pub mod syntax;
 
-#[cfg(test)]
-#[test]
-fn test() {
-    use crate::syntax::ConventionalCommit;
-
-    let input = r#"feat: add support for schemas, triggers, and task to app and graphql
-
-The main purpose of this group of work was to add support for clients to
-be able to interact with the system with out having direct access to the
-core.
-
-This way it is more secure and extendable.
-
-Triggers can be added in the database with custom schemas that provide
-unique input fields per trigger if config is required when setting up.
-
-Then Tasks are similar and provide the same functionality.
-
-Both Triggers and Tasks can be later mapped by a service / endpoint on
-creation mutation to allow for creating Rules in the rusty reactor db
-for execution.
-    "#;
-
-    ConventionalCommit::new(input).unwrap();
-}
