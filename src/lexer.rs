@@ -2,6 +2,8 @@ use std::borrow::Cow;
 use std::fmt;
 use std::str::FromStr;
 
+use tokenizers::tokenizer::Tokenizer;
+
 use anyhow::Result;
 
 use thiserror::Error;
@@ -113,68 +115,187 @@ impl<'a> ConventionalCommit<'a> {
     }
 
     pub fn parse(message: &'a str) -> Result<Self, ParsingError> {
-        let mut lines = message.lines();
 
         // Parse the header line.
-        let header_line = lines
-            .next()
-            .ok_or(ParsingError::MissingHeaderLine)?;
-        let mut parts = header_line.split_inclusive(":");
+        let tokenizer = Tokenizer::from_pretrained("bert-base-cased", None).unwrap();
 
+        let encoding = tokenizer.encode(message, false).unwrap();
+        let tokens = encoding.get_tokens().to_vec();
 
+        let mut commit = ConventionalCommit {
+            commit_type: CommitType::Feat,
+            scope: None,
+            description: "".to_string(),
+            body: None,
+            footers: Vec::new(),
+        };
 
+        let mut commit_type_found = false;
+        let mut scope_found = false;
+        let mut description_found = false;
+        let mut body_found = false;
+        let mut footers_found = false;
+        let mut breaking_change_found = false;
 
-        let commit_type = parts
-            .next()
-            .ok_or(ParsingError::MissingCommitType)?
-            .parse()
-            .map_err(|_| ParsingError::InvalidCommitType);
+        for token in tokens {
+            if !commit_type_found {
+                if token == "feat" {
+                    commit.commit_type = CommitType::Feat;
+                    commit_type_found = true;
+                } else if token == "fix" {
+                    commit.commit_type = CommitType::Fix;
+                    commit_type_found = true;
+                } else if token == "docs" {
+                    commit.commit_type = CommitType::Docs;
+                    commit_type_found = true;
+                } else if token == "style" {
+                    commit.commit_type = CommitType::Style;
+                    commit_type_found = true;
+                } else if token == "refactor" {
+                    commit.commit_type = CommitType::Refactor;
+                    commit_type_found = true;
+                } else if token == "perf" {
+                    commit.commit_type = CommitType::Perf;
+                    commit_type_found = true;
+                } else if token == "test" {
+                    commit.commit_type = CommitType::Test;
+                    commit_type_found = true;
+                } else if token == "build" {
+                    commit.commit_type = CommitType::Build;
+                    commit_type_found = true;
+                } else if token == "ci" {
+                    commit.commit_type = CommitType::Ci;
+                    commit_type_found = true;
+                } else if token == "chore" {
+                    commit.commit_type = CommitType::Chore;
+                    commit_type_found = true;
+                } else if token == "revert" {
+                    commit.commit_type = CommitType::Revert;
+                    commit_type_found = true;
+                } else if token == "merge" {
+                    commit.commit_type = CommitType::Merge;
+                    commit_type_found = true;
+                } else if token == "release" {
+                    commit.commit_type = CommitType::Release;
+                    commit_type_found = true;
+                } else {
+                    return Err(ParsingError::InvalidCommitType);
+                }
+            }
 
-        let scope = parts
-            .next()
-            .map(|s| s.trim_start_matches('(').trim_end_matches(')'));
+            if !scope_found {
+                if token == "(" {
+                    scope_found = true;
+                }
+            } else {
+                if token == ")" {
+                    scope_found = false;
+                } else {
+                    commit.scope = Some(token.to_string());
+                }
+            }
 
-        let description = parts
-            .next()
-            .ok_or(ParsingError::MissingDescription)?
-            .trim();
+            if !description_found {
+                if token == ":" {
+                    description_found = true;
+                }
+            } else {
+                if token == "\n" {
+                    description_found = true;
+                } else {
+                    commit.description.push_str(&format!(" {}", &token));
+                }
+            }
 
-        // Parse the body.
-        let body = lines.next().map(|s| s.trim());
+            if !body_found {
+                if token == "\n" {
+                    body_found = true;
+                }
+            } else {
+                if token == "\n" {
+                    body_found = false;
+                } else {
+                    let new_body =  commit.body.clone().map_or("".to_string(), |body| format!("{} {}", body, token));
+                    commit.body = Some(new_body);
+                }
+            }
 
-        // Parse the footers.
-        let footers = lines
-            .map(|line| Footer::parse(line))
-            .collect::<Result<Vec<_>, ParsingError>>()?;
+            if !footers_found {
+                if token == "\n" {
+                    footers_found = true;
+                }
+            } else {
+                if token == "\n" {
+                    footers_found = false;
+                } else {
+                    let footer = Footer::new("BREAKING CHANGE".to_string(), token.clone().into());
+                    commit.footers.push(footer);
+                }
+            }
 
-        Ok(ConventionalCommit {
-            commit_type: commit_type?,
-            scope: scope.map(|s| s.to_string()),
-            description: description.to_string(),
-            body: body.map(|s| s.to_string()),
-            footers,
-        })
+            if !breaking_change_found {
+                if token == "BREAKING CHANGE" {
+                    breaking_change_found = true;
+                }
+            } else {
+                if token == "\n" {
+                    breaking_change_found = false;
+                } else {
+                    let footer = Footer::new("BREAKING CHANGE".to_string(), token.into());
+                    commit.footers.push(footer);
+                }
+            }
+
+            /*
+            *
+            *     let commit_type = token.
+                        .ok_or(ParsingError::MissingCommitType)?
+                        .parse()
+                        .map_err(|_| ParsingError::InvalidCommitType);
+
+                    let scope = parts
+                        .next()
+                        .map(|s| s.trim_start_matches('(').trim_end_matches(')'));
+
+                    let description = parts.next().ok_or(ParsingError::MissingDescription)?.trim();
+
+                    // Parse the body.
+                    let body = lines.next().map(|s| s.trim());
+
+                    // Parse the footers.
+                    let footers = lines
+                        .map(|line| Footer::parse(line))
+                        .collect::<Result<Vec<_>, ParsingError>>()?;
+
+                    let mut commit = commit.body = body.map(|body| Self::parse_body(&mut commit, body));
+
+            */
+        }
+
+        println!("{:#?}", commit);
+
+        Ok(commit)
     }
 }
 
 impl fmt::Display for ConventionalCommit<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}:", self.commit_type)?;
+        write!(f, "{}", self.commit_type)?;
 
         if let Some(scope) = &self.scope {
-            writeln!(f, "({})", scope)?;
+            write!(f, "({}): ", scope)?;
         }
 
         writeln!(f, "{}", self.description)?;
 
         if let Some(body) = &self.body {
             writeln!(f)?;
-            writeln!(f, "{}", body)?;
+            write!(f, "{}", body)?;
         }
 
         for footer in &self.footers {
-            writeln!(f)?;
-            writeln!(f, "{}", footer)?;
+            writeln!(f, "\n")?;
+            write!(f, "{}", footer)?;
         }
 
         Ok(())
@@ -195,10 +316,7 @@ impl<'a> Footer<'a> {
     pub fn parse(line: &'a str) -> Result<Self, ParsingError> {
         let mut parts = line.splitn(2, ':');
 
-        let token = parts
-            .next()
-            .ok_or(ParsingError::MissingToken)?
-            .trim();
+        let token = parts.next().ok_or(ParsingError::MissingToken)?.trim();
         let value = parts.next().unwrap_or("").trim();
 
         Ok(Footer {
@@ -444,7 +562,7 @@ This is a longer description of the feature.
 
 BREAKING CHANGE: This feature breaks backwards compatibility.
 
-See #1234";
+See: #1234";
 
         assert_eq!(commit.to_string(), expected_message);
         Ok(())

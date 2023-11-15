@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.75"
 thiserror = "1.0.48"
+tokenizers = { version = "0.15.0", features = ["hf-hub", "http"] }
