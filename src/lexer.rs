@@ -1,33 +1,22 @@
-use std::borrow::Cow;
-use std::fmt;
-use std::str::FromStr;
+use std::{
+    error::Error,
+    str::Chars,
+    sync::{Arc, Mutex},
+};
 
-use tokenizers::tokenizer::Tokenizer;
+pub const LITERAL_COLON: char = ':';
+pub const LITERAL_LPAREN: char = '(';
+pub const LITERAL_RPAREN: char = ')';
+pub const LITERAL_NEWLINE: char = '\n';
+pub const LITERAL_SPACE: char = ' ';
+pub const LITERAL_EXCLAMATION: char = '!';
+pub const LITERAL_EOI: char = '\0';
+pub const LITERAL_EMPTY: &str = "";
+pub const LITERAL_COLONSPACE: &str = ": ";
+pub const SYMBOL_BREAKING_CHANGE: &str = "BREAKING-CHANGE:";
 
-use anyhow::Result;
-
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum ParsingError {
-    #[error("missing header line")]
-    MissingHeaderLine,
-    #[error("missing commit type")]
-    MissingCommitType,
-    #[error("invalid commit type")]
-    InvalidCommitType,
-    #[error("missing description")]
-    MissingDescription,
-    #[error("missing token")]
-    MissingToken,
-    #[error("invalid footer")]
-    InvalidFooter,
-    #[error("unknown parsing error {0}")]
-    Unknown(String),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum CommitType {
+#[derive(Debug, PartialEq)]
+pub enum AngularConventionTypes {
     Feat,
     Fix,
     Docs,
@@ -39,532 +28,271 @@ pub enum CommitType {
     Ci,
     Chore,
     Revert,
-    Merge,
-    Release,
-    Other(String),
+    Unknown,
 }
 
-impl FromStr for CommitType {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+impl From<&str> for AngularConventionTypes {
+    fn from(s: &str) -> Self {
         match s {
-            "feat" => Ok(CommitType::Feat),
-            "fix" => Ok(CommitType::Fix),
-            "docs" => Ok(CommitType::Docs),
-            "style" => Ok(CommitType::Style),
-            "refactor" => Ok(CommitType::Refactor),
-            "perf" => Ok(CommitType::Perf),
-            "test" => Ok(CommitType::Test),
-            "build" => Ok(CommitType::Build),
-            "ci" => Ok(CommitType::Ci),
-            "chore" => Ok(CommitType::Chore),
-            "revert" => Ok(CommitType::Revert),
-            "merge" => Ok(CommitType::Merge),
-            "release" => Ok(CommitType::Release),
-            other => Ok(CommitType::Other(other.to_string())),
+            "feat" => AngularConventionTypes::Feat,
+            "fix" => AngularConventionTypes::Fix,
+            "docs" => AngularConventionTypes::Docs,
+            "style" => AngularConventionTypes::Style,
+            "refactor" => AngularConventionTypes::Refactor,
+            "perf" => AngularConventionTypes::Perf,
+            "test" => AngularConventionTypes::Test,
+            "build" => AngularConventionTypes::Build,
+            "ci" => AngularConventionTypes::Ci,
+            "chore" => AngularConventionTypes::Chore,
+            "revert" => AngularConventionTypes::Revert,
+            _ => AngularConventionTypes::Unknown,
         }
     }
 }
 
-impl fmt::Display for CommitType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CommitType::Feat => write!(f, "feat"),
-            CommitType::Fix => write!(f, "fix"),
-            CommitType::Docs => write!(f, "docs"),
-            CommitType::Style => write!(f, "style"),
-            CommitType::Refactor => write!(f, "refactor"),
-            CommitType::Perf => write!(f, "perf"),
-            CommitType::Test => write!(f, "test"),
-            CommitType::Build => write!(f, "build"),
-            CommitType::Ci => write!(f, "ci"),
-            CommitType::Chore => write!(f, "chore"),
-            CommitType::Revert => write!(f, "revert"),
-            CommitType::Merge => write!(f, "merge"),
-            CommitType::Release => write!(f, "release"),
-            CommitType::Other(other) => write!(f, "{}", other),
-        }
+impl<'a> From<Chars<'a>> for AngularConventionTypes {
+    fn from(s: Chars) -> Self {
+        AngularConventionTypes::from(s.as_str())
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct ConventionalCommit<'a> {
-    pub commit_type: CommitType,
-    pub scope: Option<String>,
-    pub description: String,
-    pub body: Option<String>,
-    pub footers: Vec<Footer<'a>>,
+impl From<String> for AngularConventionTypes {
+    fn from(s: String) -> Self {
+        AngularConventionTypes::from(s.as_str())
+    }
 }
 
-impl<'a> ConventionalCommit<'a> {
-    pub fn new(
-        commit_type: CommitType,
-        scope: Option<String>,
-        description: String,
-        body: Option<String>,
-        footers: Vec<Footer<'a>>,
-    ) -> Self {
-        ConventionalCommit {
-            commit_type,
-            scope,
-            description,
-            body,
-            footers,
+impl From<&String> for AngularConventionTypes {
+    fn from(s: &String) -> Self {
+        AngularConventionTypes::from(s.as_str())
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum TokenType {
+    CommitType,
+    Scope,
+    Description,
+    Body,
+    LParen,
+    RParen,
+    Footer,
+    Colon,
+    ColonSpace,
+    Word,
+    Exclamation,
+    NewLine,
+    Space,
+    EOI,
+    BreakingChange,
+    Empty,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Node {
+    pub token_type: Option<TokenType>,
+    pub value: Option<String>,
+}
+
+impl Node {
+    pub fn new(token_type: Option<TokenType>, value: Option<String>) -> Self {
+        Node { token_type, value }
+    }
+
+    pub fn clean(&mut self) {
+        self.value = Some(
+            match self.value.clone() {
+                Some(value) => value.trim().to_string(),
+                None => LITERAL_EMPTY.to_string(),
+            }
+            .trim()
+            .to_string(),
+        );
+    }
+
+    pub fn set_token_type(&mut self, token_type: TokenType) {
+        self.token_type = Some(token_type);
+    }
+
+    pub fn set_value(&mut self, value: String) {
+        self.value = Some(value);
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Parser {
+    input: String,
+    position: usize,
+}
+
+impl Parser {
+    pub fn new(input: String) -> Arc<Mutex<Parser>> {
+        Arc::new(Mutex::new(Parser { input, position: 0 }))
+    }
+
+    pub fn get_position(&self) -> usize {
+        self.position
+    }
+}
+
+pub struct Lexer {
+    _prev_token: Option<Node>,
+    parser: Arc<Mutex<Parser>>,
+    token: Node,
+    _next_token: Option<Node>,
+}
+
+impl Lexer {
+    pub fn new(input: String) -> Self {
+        Lexer {
+            _prev_token: None,
+            parser: Parser::new(input),
+            token: Node {
+                token_type: None,
+                value: None,
+            },
+            _next_token: None,
         }
     }
 
-    pub fn parse(message: &'a str) -> Result<Self, ParsingError> {
+    pub fn next_token(&mut self, position: Option<usize>) -> Result<Option<Node>, Box<dyn Error>> {
+        let mut token_value = String::new();
 
-        // Parse the header line.
-        let tokenizer = Tokenizer::from_pretrained("bert-base-cased", None).unwrap();
+        // Loop through the input string
+        // and accumulate characters until we reach a delimiter
+        // or the end of the string
+        let guarded_parser = self.parser.clone();
 
-        let encoding = tokenizer.encode(message, false).unwrap();
-        let tokens = encoding.get_tokens().to_vec();
+        let mut parser = guarded_parser.lock().unwrap();
 
-        let mut commit = ConventionalCommit {
-            commit_type: CommitType::Feat,
-            scope: None,
-            description: "".to_string(),
-            body: None,
-            footers: Vec::new(),
-        };
+        if position.is_some() {
+            parser.position = position.unwrap();
+        }
 
-        let mut commit_type_found = false;
-        let mut scope_found = false;
-        let mut description_found = false;
-        let mut body_found = false;
-        let mut footers_found = false;
-        let mut breaking_change_found = false;
+        while let Some(c) = parser.input.chars().nth(parser.position) {
+            let next_position = parser.position + 1;
 
-        for token in tokens {
-            if !commit_type_found {
-                if token == "feat" {
-                    commit.commit_type = CommitType::Feat;
-                    commit_type_found = true;
-                } else if token == "fix" {
-                    commit.commit_type = CommitType::Fix;
-                    commit_type_found = true;
-                } else if token == "docs" {
-                    commit.commit_type = CommitType::Docs;
-                    commit_type_found = true;
-                } else if token == "style" {
-                    commit.commit_type = CommitType::Style;
-                    commit_type_found = true;
-                } else if token == "refactor" {
-                    commit.commit_type = CommitType::Refactor;
-                    commit_type_found = true;
-                } else if token == "perf" {
-                    commit.commit_type = CommitType::Perf;
-                    commit_type_found = true;
-                } else if token == "test" {
-                    commit.commit_type = CommitType::Test;
-                    commit_type_found = true;
-                } else if token == "build" {
-                    commit.commit_type = CommitType::Build;
-                    commit_type_found = true;
-                } else if token == "ci" {
-                    commit.commit_type = CommitType::Ci;
-                    commit_type_found = true;
-                } else if token == "chore" {
-                    commit.commit_type = CommitType::Chore;
-                    commit_type_found = true;
-                } else if token == "revert" {
-                    commit.commit_type = CommitType::Revert;
-                    commit_type_found = true;
-                } else if token == "merge" {
-                    commit.commit_type = CommitType::Merge;
-                    commit_type_found = true;
-                } else if token == "release" {
-                    commit.commit_type = CommitType::Release;
-                    commit_type_found = true;
-                } else {
-                    return Err(ParsingError::InvalidCommitType);
+            drop(parser);
+
+            match c {
+                LITERAL_COLON => {
+                    let next_token = self.peek_token(next_position)?;
+                    if next_token.is_some() {
+                        let next_token = next_token.unwrap();
+                        if next_token.token_type == Some(TokenType::Space) {
+                            self.token.set_token_type(TokenType::ColonSpace);
+                            self.token.set_value(LITERAL_COLONSPACE.to_string());
+                            self._next_token = Some(Node::new(
+                                Some(TokenType::ColonSpace),
+                                Some(token_value.clone()),
+                            ));
+                            parser = guarded_parser.lock().unwrap();
+                            break;
+                        }
+                    }
+                    self.token.set_token_type(TokenType::Colon);
+                    self.token.set_value(c.to_string());
+                    self._next_token = Some(Node::new(Some(TokenType::Colon), Some(c.to_string())));
+                }
+                LITERAL_LPAREN => {
+                    self.token.set_token_type(TokenType::LParen);
+                    self.token.set_value(c.to_string());
+                    self._next_token =
+                        Some(Node::new(Some(TokenType::LParen), Some(c.to_string())));
+                }
+                LITERAL_RPAREN => {
+                    self.token.set_token_type(TokenType::RParen);
+                    self.token.set_value(c.to_string());
+                    self._next_token =
+                        Some(Node::new(Some(TokenType::RParen), Some(c.to_string())));
+                }
+                LITERAL_NEWLINE => {
+                    self.token.set_token_type(TokenType::NewLine);
+                    self.token.set_value(c.to_string());
+                    self._next_token =
+                        Some(Node::new(Some(TokenType::NewLine), Some(c.to_string())));
+                }
+                LITERAL_SPACE => {
+                    self.token.set_token_type(TokenType::Space);
+                    self.token.set_value(c.to_string());
+                    self._next_token = Some(Node::new(Some(TokenType::Space), Some(c.to_string())));
+                }
+                LITERAL_EXCLAMATION => {
+                    self.token.set_token_type(TokenType::Exclamation);
+                    self.token.set_value(c.to_string());
+                    self._next_token =
+                        Some(Node::new(Some(TokenType::Exclamation), Some(c.to_string())));
+                }
+                LITERAL_EOI => {
+                    self.token.set_token_type(TokenType::EOI);
+                    self.token.set_value(c.to_string());
+                    self._next_token = Some(Node::new(
+                        Some(TokenType::EOI),
+                        Some(LITERAL_EOI.to_string()),
+                    ));
+                }
+                _ => {
+                    token_value.push(c);
+                    parser = guarded_parser.lock().unwrap();
+                    parser.position += 1;
+                    continue;
+                }
+            };
+
+            parser = guarded_parser.lock().unwrap();
+            parser.position += 1;
+        }
+
+        drop(parser);
+
+        Ok(Some(self.token.clone()))
+    }
+
+    fn peek_token(&mut self, position: usize) -> Result<Option<Node>, Box<dyn Error>> {
+        self.next_token(Some(position))
+    }
+
+    pub fn scan(&mut self, input: String) -> Result<Option<Node>, Box<dyn Error>> {
+        for _ in input.chars() {
+            let token = self.next_token(None)?;
+
+            if token.is_some() {
+                match token.unwrap() {
+                    Node {
+                        token_type: Some(TokenType::CommitType),
+                        value,
+                    } => {
+                        self._prev_token = Some(Node::new(Some(TokenType::CommitType), value));
+                    }
+                    Node {
+                        token_type: Some(TokenType::Scope),
+                        value,
+                    } => {
+                        self._prev_token = Some(Node::new(Some(TokenType::Scope), value));
+                    }
+                    Node {
+                        token_type: Some(TokenType::Description),
+                        value,
+                    } => {
+                        self._prev_token = Some(Node::new(Some(TokenType::Description), value));
+                    }
+                    Node {
+                        token_type: Some(TokenType::Body),
+                        value,
+                    } => {
+                        self._prev_token = Some(Node::new(Some(TokenType::Body), value));
+                    }
+                    Node {
+                        token_type: Some(TokenType::Footer),
+                        value,
+                    } => {
+                        self._prev_token = Some(Node::new(Some(TokenType::Footer), value));
+                    }
+                    _ => {}
                 }
             }
-
-            if !scope_found {
-                if token == "(" {
-                    scope_found = true;
-                }
-            } else {
-                if token == ")" {
-                    scope_found = false;
-                } else {
-                    commit.scope = Some(token.to_string());
-                }
-            }
-
-            if !description_found {
-                if token == ":" {
-                    description_found = true;
-                }
-            } else {
-                if token == "\n" {
-                    description_found = true;
-                } else {
-                    commit.description.push_str(&format!(" {}", &token));
-                }
-            }
-
-            if !body_found {
-                if token == "\n" {
-                    body_found = true;
-                }
-            } else {
-                if token == "\n" {
-                    body_found = false;
-                } else {
-                    let new_body =  commit.body.clone().map_or("".to_string(), |body| format!("{} {}", body, token));
-                    commit.body = Some(new_body);
-                }
-            }
-
-            if !footers_found {
-                if token == "\n" {
-                    footers_found = true;
-                }
-            } else {
-                if token == "\n" {
-                    footers_found = false;
-                } else {
-                    let footer = Footer::new("BREAKING CHANGE".to_string(), token.clone().into());
-                    commit.footers.push(footer);
-                }
-            }
-
-            if !breaking_change_found {
-                if token == "BREAKING CHANGE" {
-                    breaking_change_found = true;
-                }
-            } else {
-                if token == "\n" {
-                    breaking_change_found = false;
-                } else {
-                    let footer = Footer::new("BREAKING CHANGE".to_string(), token.into());
-                    commit.footers.push(footer);
-                }
-            }
-
-            /*
-            *
-            *     let commit_type = token.
-                        .ok_or(ParsingError::MissingCommitType)?
-                        .parse()
-                        .map_err(|_| ParsingError::InvalidCommitType);
-
-                    let scope = parts
-                        .next()
-                        .map(|s| s.trim_start_matches('(').trim_end_matches(')'));
-
-                    let description = parts.next().ok_or(ParsingError::MissingDescription)?.trim();
-
-                    // Parse the body.
-                    let body = lines.next().map(|s| s.trim());
-
-                    // Parse the footers.
-                    let footers = lines
-                        .map(|line| Footer::parse(line))
-                        .collect::<Result<Vec<_>, ParsingError>>()?;
-
-                    let mut commit = commit.body = body.map(|body| Self::parse_body(&mut commit, body));
-
-            */
         }
 
-        println!("{:#?}", commit);
-
-        Ok(commit)
-    }
-}
-
-impl fmt::Display for ConventionalCommit<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.commit_type)?;
-
-        if let Some(scope) = &self.scope {
-            write!(f, "({}): ", scope)?;
-        }
-
-        writeln!(f, "{}", self.description)?;
-
-        if let Some(body) = &self.body {
-            writeln!(f)?;
-            write!(f, "{}", body)?;
-        }
-
-        for footer in &self.footers {
-            writeln!(f, "\n")?;
-            write!(f, "{}", footer)?;
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Footer<'a> {
-    pub token: String,
-    pub value: Cow<'a, str>,
-}
-
-impl<'a> Footer<'a> {
-    pub fn new(token: String, value: Cow<'a, str>) -> Self {
-        Footer { token, value }
-    }
-
-    pub fn parse(line: &'a str) -> Result<Self, ParsingError> {
-        let mut parts = line.splitn(2, ':');
-
-        let token = parts.next().ok_or(ParsingError::MissingToken)?.trim();
-        let value = parts.next().unwrap_or("").trim();
-
-        Ok(Footer {
-            token: token.to_string(),
-            value: value.into(),
-        })
-    }
-}
-
-impl<'a> fmt::Display for Footer<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.value.is_empty() {
-            write!(f, "{}", self.token)
-        } else {
-            write!(f, "{}: {}", self.token, self.value)
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_commit() -> Result<()> {
-        let message = "feat: add a new feature
-
-This is a longer description of the feature.
-
-BREAKING CHANGE: This feature breaks backwards compatibility.";
-
-        let commit = ConventionalCommit::parse(message)?;
-
-        assert_eq!(commit.commit_type, CommitType::Feat);
-        assert_eq!(commit.scope, None);
-        assert_eq!(commit.description, "add a new feature");
-        assert_eq!(
-            commit.body,
-            Some("This is a longer description of the feature.".to_string())
-        );
-        assert_eq!(
-            commit.footers,
-            vec![Footer::new(
-                "BREAKING CHANGE".to_string(),
-                "This feature breaks backwards compatibility.".into()
-            )]
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_parse_commit_with_scope() -> Result<()> {
-        let message = "feat(parser): add a new feature to the parser
-
-This is a longer description of the feature.";
-
-        let commit = ConventionalCommit::parse(message)?;
-
-        assert_eq!(commit.commit_type, CommitType::Feat);
-        assert_eq!(commit.scope, Some("parser".to_string()));
-        assert_eq!(commit.description, "add a new feature to the parser");
-        assert_eq!(
-            commit.body,
-            Some("This is a longer description of the feature.".to_string())
-        );
-        assert_eq!(commit.footers, vec![]);
-        Ok(())
-    }
-
-    #[test]
-    fn test_parse_commit_with_body() -> Result<()> {
-        let message = "feat: add a new feature
-
-This is a longer description of the feature.
-
-BREAKING CHANGE: This feature breaks backwards compatibility.
-
-See #1234 for more details.";
-
-        let commit = ConventionalCommit::parse(message)?;
-
-        assert_eq!(commit.commit_type, CommitType::Feat);
-        assert_eq!(commit.scope, None);
-        assert_eq!(commit.description, "add a new feature");
-        assert_eq!(
-            commit.body,
-            Some("This is a longer description of the feature.".to_string())
-        );
-        assert_eq!(
-            commit.footers,
-            vec![
-                Footer::new(
-                    "BREAKING CHANGE".to_string(),
-                    "This feature breaks backwards compatibility.".into()
-                ),
-                Footer::new("See".to_string(), "#1234".into())
-            ]
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_parse_commit_with_multiple_footers() -> Result<()> {
-        let message = "feat: add a new feature
-
-This is a longer description of the feature.
-
-BREAKING CHANGE: This feature breaks backwards compatibility.
-
-See #1234 for more details.
-
-Acked-by: John Smith <john.smith@example.com>";
-
-        let commit = ConventionalCommit::parse(message)?;
-
-        assert_eq!(commit.commit_type, CommitType::Feat);
-        assert_eq!(commit.scope, None);
-        assert_eq!(commit.description, "add a new feature");
-        assert_eq!(
-            commit.body,
-            Some("This is a longer description of the feature.".to_string())
-        );
-        assert_eq!(
-            commit.footers,
-            vec![
-                Footer::new(
-                    "BREAKING CHANGE".to_string(),
-                    "This feature breaks backwards compatibility.".into()
-                ),
-                Footer::new("See".to_string(), "#1234".into()),
-                Footer::new(
-                    "Acked-by".to_string(),
-                    "John Smith <john.smith@example.com>".into()
-                )
-            ]
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_parse_commit_with_breaking_change_in_header() -> Result<()> {
-        let message = "feat!: add a new feature
-
-This is a longer description of the feature.";
-
-        let commit = ConventionalCommit::parse(message)?;
-
-        assert_eq!(commit.commit_type, CommitType::Feat);
-        assert_eq!(commit.scope, None);
-        assert_eq!(commit.description, "add a new feature");
-        assert_eq!(
-            commit.body,
-            Some("This is a longer description of the feature.".to_string())
-        );
-        assert_eq!(
-            commit.footers,
-            vec![Footer::new("BREAKING CHANGE".to_string(), "".into())]
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_parse_commit_with_breaking_change_in_footer() -> Result<()> {
-        let message = "feat: add a new feature
-
-This is a longer description of the feature.
-
-BREAKING CHANGE: This feature breaks backwards compatibility.";
-
-        let commit = ConventionalCommit::parse(message)?;
-
-        assert_eq!(commit.commit_type, CommitType::Feat);
-        assert_eq!(commit.scope, None);
-        assert_eq!(commit.description, "add a new feature");
-        assert_eq!(
-            commit.body,
-            Some("This is a longer description of the feature.".to_string())
-        );
-        assert_eq!(
-            commit.footers,
-            vec![Footer::new(
-                "BREAKING CHANGE".to_string(),
-                "This feature breaks backwards compatibility.".into()
-            )]
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn test_parse_commit_with_invalid_header() -> Result<()> {
-        let message = "invalid: add a new feature
-
-This is a longer description of the feature.";
-
-        let result = ConventionalCommit::parse(message);
-
-        assert!(result.is_err());
-        Ok(())
-    }
-
-    #[test]
-    fn test_parse_commit_with_missing_description() {
-        let message = "feat:";
-
-        let result = ConventionalCommit::parse(message);
-
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_parse_commit_with_invalid_footer() -> Result<()> {
-        let message = "feat: add a new feature
-
-This is a longer description of the feature.
-
-INVALID: This is an invalid footer.";
-
-        let result = ConventionalCommit::parse(message);
-
-        assert!(result.is_err());
-        Ok(())
-    }
-
-    #[test]
-    fn test_format_commit() -> Result<()> {
-        let commit = ConventionalCommit {
-            commit_type: CommitType::Feat,
-            scope: Some("parser".to_string()),
-            description: "add a new feature to the parser".to_string(),
-            body: Some("This is a longer description of the feature.".to_string()),
-            footers: vec![
-                Footer::new(
-                    "BREAKING CHANGE".to_string(),
-                    "This feature breaks backwards compatibility.".into(),
-                ),
-                Footer::new("See".to_string(), "#1234".into()),
-            ],
-        };
-
-        let expected_message = "feat(parser): add a new feature to the parser
-
-This is a longer description of the feature.
-
-BREAKING CHANGE: This feature breaks backwards compatibility.
-
-See: #1234";
-
-        assert_eq!(commit.to_string(), expected_message);
-        Ok(())
+        Ok(None)
     }
 }
