@@ -1,24 +1,43 @@
-use std::{
-    error::Error,
-    str::Chars,
-    sync::{Arc, Mutex},
-};
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::iter::Iterator;
 
-pub const LITERAL_COLON: char = ':';
-pub const LITERAL_LPAREN: char = '(';
-pub const LITERAL_RPAREN: char = ')';
-pub const LITERAL_NEWLINE: char = '\n';
-pub const LITERAL_SPACE: char = ' ';
-pub const LITERAL_EXCLAMATION: char = '!';
-pub const LITERAL_EOI: char = '\0';
-pub const LITERAL_EMPTY: &str = "";
-pub const LITERAL_COLONSPACE: &str = ": ";
-pub const SYMBOL_BREAKING_CHANGE: &str = "BREAKING-CHANGE:";
+#[derive(Debug, PartialEq, Clone)]
+pub enum Token {
+    Type(TokenType),
+    Scope(String),
+    Description(String),
+    Body(String),
+    Footer(FooterToken, String),
+}
 
-#[derive(Debug, PartialEq)]
-pub enum AngularConventionTypes {
-    Feat,
+impl Token {
+    pub fn is_breaking_change(&self) -> bool {
+        if let Token::Footer(FooterToken::BreakingChange, _) = self {
+            true
+        } else {
+            false
+        }
+    }
+}
+
+impl Display for Token {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            Token::Type(ty) => write!(f, "{}", ty),
+            Token::Scope(scope) => write!(f, "({})", scope),
+            Token::Description(desc) => write!(f, "{}", desc),
+            Token::Body(body) => write!(f, "{}", body),
+            Token::Footer(token, value) => write!(f, "{}: {}", token, value),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum TokenType {
+    Feature,
     Fix,
+    Chore,
     Docs,
     Style,
     Refactor,
@@ -26,273 +45,188 @@ pub enum AngularConventionTypes {
     Test,
     Build,
     Ci,
-    Chore,
-    Revert,
-    Unknown,
+    Other(String),
 }
 
-impl From<&str> for AngularConventionTypes {
-    fn from(s: &str) -> Self {
-        match s {
-            "feat" => AngularConventionTypes::Feat,
-            "fix" => AngularConventionTypes::Fix,
-            "docs" => AngularConventionTypes::Docs,
-            "style" => AngularConventionTypes::Style,
-            "refactor" => AngularConventionTypes::Refactor,
-            "perf" => AngularConventionTypes::Perf,
-            "test" => AngularConventionTypes::Test,
-            "build" => AngularConventionTypes::Build,
-            "ci" => AngularConventionTypes::Ci,
-            "chore" => AngularConventionTypes::Chore,
-            "revert" => AngularConventionTypes::Revert,
-            _ => AngularConventionTypes::Unknown,
+impl TokenType {
+    pub fn from_str(s: &str) -> Option<TokenType> {
+        match s.to_lowercase().as_str() {
+            "feat" => Some(TokenType::Feature),
+            "fix" => Some(TokenType::Fix),
+            "chore" => Some(TokenType::Chore),
+            "docs" => Some(TokenType::Docs),
+            "style" => Some(TokenType::Style),
+            "refactor" => Some(TokenType::Refactor),
+            "perf" => Some(TokenType::Perf),
+            "test" => Some(TokenType::Test),
+            "build" => Some(TokenType::Build),
+            "ci" => Some(TokenType::Ci),
+            _ => Some(TokenType::Other(s.to_string())),
         }
     }
 }
 
-impl<'a> From<Chars<'a>> for AngularConventionTypes {
-    fn from(s: Chars) -> Self {
-        AngularConventionTypes::from(s.as_str())
-    }
-}
-
-impl From<String> for AngularConventionTypes {
-    fn from(s: String) -> Self {
-        AngularConventionTypes::from(s.as_str())
-    }
-}
-
-impl From<&String> for AngularConventionTypes {
-    fn from(s: &String) -> Self {
-        AngularConventionTypes::from(s.as_str())
+impl Display for TokenType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            TokenType::Feature => write!(f, "feat"),
+            TokenType::Fix => write!(f, "fix"),
+            TokenType::Chore => write!(f, "chore"),
+            TokenType::Docs => write!(f, "docs"),
+            TokenType::Style => write!(f, "style"),
+            TokenType::Refactor => write!(f, "refactor"),
+            TokenType::Perf => write!(f, "perf"),
+            TokenType::Test => write!(f, "test"),
+            TokenType::Build => write!(f, "build"),
+            TokenType::Ci => write!(f, "ci"),
+            TokenType::Other(s) => write!(f, "{}", s),
+        }
     }
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum TokenType {
-    CommitType,
-    Scope,
-    Description,
-    Body,
-    LParen,
-    RParen,
-    Footer,
-    Colon,
-    ColonSpace,
-    Word,
-    Exclamation,
-    NewLine,
-    Space,
-    EOI,
+pub enum FooterToken {
     BreakingChange,
-    Empty,
+    ReviewedBy,
+    AckedBy,
+    Refs,
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct Node {
-    pub token_type: Option<TokenType>,
-    pub value: Option<String>,
-}
-
-impl Node {
-    pub fn new(token_type: Option<TokenType>, value: Option<String>) -> Self {
-        Node { token_type, value }
-    }
-
-    pub fn clean(&mut self) {
-        self.value = Some(
-            match self.value.clone() {
-                Some(value) => value.trim().to_string(),
-                None => LITERAL_EMPTY.to_string(),
-            }
-            .trim()
-            .to_string(),
-        );
-    }
-
-    pub fn set_token_type(&mut self, token_type: TokenType) {
-        self.token_type = Some(token_type);
-    }
-
-    pub fn set_value(&mut self, value: String) {
-        self.value = Some(value);
+impl FooterToken {
+    pub fn from_str(s: &str) -> Option<FooterToken> {
+        match s.to_uppercase().as_str() {
+            "BREAKING CHANGE" => Some(FooterToken::BreakingChange),
+            "BREAKING-CHANGE" => Some(FooterToken::BreakingChange),
+            "REVIEWED-BY" => Some(FooterToken::ReviewedBy),
+            "ACKED-BY" => Some(FooterToken::AckedBy),
+            "REFS" => Some(FooterToken::Refs),
+            _ => None,
+        }
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct Parser {
-    input: String,
-    position: usize,
-}
-
-impl Parser {
-    pub fn new(input: String) -> Arc<Mutex<Parser>> {
-        Arc::new(Mutex::new(Parser { input, position: 0 }))
-    }
-
-    pub fn get_position(&self) -> usize {
-        self.position
+impl Display for FooterToken {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            FooterToken::BreakingChange => write!(f, "BREAKING CHANGE"),
+            FooterToken::ReviewedBy => write!(f, "Reviewed-by"),
+            FooterToken::AckedBy => write!(f, "Acked-by"),
+            FooterToken::Refs => write!(f, "Refs"),
+        }
     }
 }
 
-pub struct Lexer {
-    _prev_token: Option<Node>,
-    parser: Arc<Mutex<Parser>>,
-    token: Node,
-    _next_token: Option<Node>,
+pub struct LexicalTokenizer {
+    keywords: HashMap<String, TokenType>,
+    footer_keywords: HashMap<String, FooterToken>,
 }
 
-impl Lexer {
-    pub fn new(input: String) -> Self {
-        Lexer {
-            _prev_token: None,
-            parser: Parser::new(input),
-            token: Node {
-                token_type: None,
-                value: None,
-            },
-            _next_token: None,
+impl LexicalTokenizer {
+    pub fn new() -> LexicalTokenizer {
+        LexicalTokenizer {
+            keywords: HashMap::from([
+                ("feat".to_string(), TokenType::Feature),
+                ("fix".to_string(), TokenType::Fix),
+                ("chore".to_string(), TokenType::Chore),
+                ("docs".to_string(), TokenType::Docs),
+                ("style".to_string(), TokenType::Style),
+                ("refactor".to_string(), TokenType::Refactor),
+                ("perf".to_string(), TokenType::Perf),
+                ("test".to_string(), TokenType::Test),
+                ("build".to_string(), TokenType::Build),
+                ("ci".to_string(), TokenType::Ci),
+            ]),
+            footer_keywords: HashMap::from([
+                ("BREAKING CHANGE".to_string(), FooterToken::BreakingChange),
+                ("REVIEWED-BY".to_string(), FooterToken::ReviewedBy),
+                ("ACKED-BY".to_string(), FooterToken::AckedBy),
+                ("REFS".to_string(), FooterToken::Refs),
+            ]),
         }
     }
 
-    pub fn next_token(&mut self, position: Option<usize>) -> Result<Option<Node>, Box<dyn Error>> {
-        let mut token_value = String::new();
+    pub fn tokenize(&self, message: &str) -> Vec<Token> {
+        let mut tokens = vec![];
+        let mut parts = message.split('\n');
 
-        // Loop through the input string
-        // and accumulate characters until we reach a delimiter
-        // or the end of the string
-        let guarded_parser = self.parser.clone();
+        if let Some(first_line) = parts.next() {
+            let mut first_line_parts = first_line.splitn(2, ':'); // Split into only two parts
 
-        let mut parser = guarded_parser.lock().unwrap();
+            if let Some(type_and_scope) = first_line_parts.next() {
+                let mut type_and_scope = type_and_scope.to_lowercase();
 
-        if position.is_some() {
-            parser.position = position.unwrap();
-        }
+                if type_and_scope.ends_with('!') {
+                    type_and_scope.pop(); // Remove the '!'
+                }
 
-        while let Some(c) = parser.input.chars().nth(parser.position) {
-            let next_position = parser.position + 1;
-
-            drop(parser);
-
-            match c {
-                LITERAL_COLON => {
-                    let next_token = self.peek_token(next_position)?;
-                    if next_token.is_some() {
-                        let next_token = next_token.unwrap();
-                        if next_token.token_type == Some(TokenType::Space) {
-                            self.token.set_token_type(TokenType::ColonSpace);
-                            self.token.set_value(LITERAL_COLONSPACE.to_string());
-                            self._next_token = Some(Node::new(
-                                Some(TokenType::ColonSpace),
-                                Some(token_value.clone()),
-                            ));
-                            parser = guarded_parser.lock().unwrap();
-                            break;
+                if let Some(type_str) = self.keywords.get(&type_and_scope) {
+                    tokens.push(Token::Type(type_str.clone()));
+                } else {
+                    // Try to extract scope, if present
+                    let type_and_scope_parts: Vec<&str> = type_and_scope.split('(').collect();
+                    if type_and_scope_parts.len() == 2 && type_and_scope_parts[1].ends_with(')') {
+                        if let Some(type_str) =
+                            self.keywords.get(&type_and_scope_parts[0].to_lowercase())
+                        {
+                            tokens.push(Token::Type(type_str.clone()));
+                            let scope =
+                                type_and_scope_parts[1][..type_and_scope_parts[1].len() - 1].trim();
+                            tokens.push(Token::Scope(scope.to_string()));
+                        } else {
+                            tokens.push(Token::Type(TokenType::Other(type_and_scope.to_string())));
                         }
+                    } else {
+                        tokens.push(Token::Type(TokenType::Other(type_and_scope.to_string())));
                     }
-                    self.token.set_token_type(TokenType::Colon);
-                    self.token.set_value(c.to_string());
-                    self._next_token = Some(Node::new(Some(TokenType::Colon), Some(c.to_string())));
                 }
-                LITERAL_LPAREN => {
-                    self.token.set_token_type(TokenType::LParen);
-                    self.token.set_value(c.to_string());
-                    self._next_token =
-                        Some(Node::new(Some(TokenType::LParen), Some(c.to_string())));
-                }
-                LITERAL_RPAREN => {
-                    self.token.set_token_type(TokenType::RParen);
-                    self.token.set_value(c.to_string());
-                    self._next_token =
-                        Some(Node::new(Some(TokenType::RParen), Some(c.to_string())));
-                }
-                LITERAL_NEWLINE => {
-                    self.token.set_token_type(TokenType::NewLine);
-                    self.token.set_value(c.to_string());
-                    self._next_token =
-                        Some(Node::new(Some(TokenType::NewLine), Some(c.to_string())));
-                }
-                LITERAL_SPACE => {
-                    self.token.set_token_type(TokenType::Space);
-                    self.token.set_value(c.to_string());
-                    self._next_token = Some(Node::new(Some(TokenType::Space), Some(c.to_string())));
-                }
-                LITERAL_EXCLAMATION => {
-                    self.token.set_token_type(TokenType::Exclamation);
-                    self.token.set_value(c.to_string());
-                    self._next_token =
-                        Some(Node::new(Some(TokenType::Exclamation), Some(c.to_string())));
-                }
-                LITERAL_EOI => {
-                    self.token.set_token_type(TokenType::EOI);
-                    self.token.set_value(c.to_string());
-                    self._next_token = Some(Node::new(
-                        Some(TokenType::EOI),
-                        Some(LITERAL_EOI.to_string()),
-                    ));
-                }
-                _ => {
-                    token_value.push(c);
-                    parser = guarded_parser.lock().unwrap();
-                    parser.position += 1;
-                    continue;
-                }
-            };
+            }
 
-            parser = guarded_parser.lock().unwrap();
-            parser.position += 1;
+            // Check for description after type/scope
+            if let Some(desc) = first_line_parts.next() {
+                tokens.push(Token::Description(desc.trim().to_string()));
+            }
         }
 
-        drop(parser);
+        let mut in_footer = false;
+        let mut body = String::new();
 
-        Ok(Some(self.token.clone()))
-    }
-
-    fn peek_token(&mut self, position: usize) -> Result<Option<Node>, Box<dyn Error>> {
-        self.next_token(Some(position))
-    }
-
-    pub fn scan(&mut self, input: String) -> Result<Option<Node>, Box<dyn Error>> {
-        for _ in input.chars() {
-            let token = self.next_token(None)?;
-
-            if token.is_some() {
-                match token.unwrap() {
-                    Node {
-                        token_type: Some(TokenType::CommitType),
-                        value,
-                    } => {
-                        self._prev_token = Some(Node::new(Some(TokenType::CommitType), value));
-                    }
-                    Node {
-                        token_type: Some(TokenType::Scope),
-                        value,
-                    } => {
-                        self._prev_token = Some(Node::new(Some(TokenType::Scope), value));
-                    }
-                    Node {
-                        token_type: Some(TokenType::Description),
-                        value,
-                    } => {
-                        self._prev_token = Some(Node::new(Some(TokenType::Description), value));
-                    }
-                    Node {
-                        token_type: Some(TokenType::Body),
-                        value,
-                    } => {
-                        self._prev_token = Some(Node::new(Some(TokenType::Body), value));
-                    }
-                    Node {
-                        token_type: Some(TokenType::Footer),
-                        value,
-                    } => {
-                        self._prev_token = Some(Node::new(Some(TokenType::Footer), value));
-                    }
-                    _ => {}
+        for part in parts {
+            if in_footer {
+                if let Some(token) = self.parse_footer_line(part.trim()) {
+                    tokens.push(Token::Footer(token.0, token.1));
+                } else {
+                    panic!("Unknown footer token: {}", part.trim());
+                }
+            } else {
+                if let Some(token) =
+                    FooterToken::from_str(part.trim().splitn(2, ':').next().unwrap())
+                {
+                    in_footer = true;
+                    let value = part.trim()[token.to_string().len() + 2..]
+                        .trim()
+                        .to_string();
+                    tokens.push(Token::Footer(token, value));
+                } else {
+                    body.push_str(part.trim());
+                    body.push('\n');
                 }
             }
         }
 
-        Ok(None)
+        if !body.is_empty() {
+            tokens.push(Token::Body(body));
+        }
+
+        tokens
+    }
+
+    fn parse_footer_line(&self, line: &str) -> Option<(FooterToken, String)> {
+        let mut parts = line.splitn(2, ':');
+        let token_str = parts.next()?.trim().to_uppercase();
+        let value = parts.next()?.trim().to_string();
+
+        self.footer_keywords
+            .get(&token_str)
+            .map(|token| (token.clone(), value))
     }
 }
