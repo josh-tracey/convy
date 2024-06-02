@@ -1,4 +1,3 @@
-
 # Convy
 
 Convy is a tool to enforce a consistent commit message format across a project. It is designed to be used as a commit-msg hook in a Git repository.
