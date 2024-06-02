@@ -59,6 +59,15 @@ In the above example, the `pattern` field defines a regular expression that the 
 
 You can define multiple rules in the `convy.yaml` file to enforce different commit message format requirements.
 
+### Generating Changelogs
+
+As this this projects doesn't currently focus on generating changelogs, it is recommended to use a tool like [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) to generate changelogs.
+
+A good tool is change which can be used without installation by running the following command:
+```bash
+ curl -s "https://raw.githubusercontent.com/adamtabrams/change/master/change" | sh -s -- init
+```
+
 ## Contributing
 
 If you have any suggestions, bug reports, or feature requests, please open an issue on GitHub.
