@@ -12,3 +12,7 @@ nom = "7.1.3"
 regex = "1.10.3"
 thiserror = "1.0.48"
 tokenizers = { version = "0.15.0", features = ["hf-hub", "http"] }
+
+
+[profile.release]
+opt-level = 3
