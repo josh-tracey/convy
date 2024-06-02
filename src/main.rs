@@ -19,8 +19,6 @@ fn main() -> Result<(), String> {
                 Err(_) => default_config(),
             };
 
-            println!("config: {:?}", config);
-
             match convy::validation::validate_commit_message(&arg.commit, tokens, Some(&config)) {
                 Ok(_) => println!("Commit message is valid!"),
                 Err(e) => {
