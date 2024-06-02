@@ -1,7 +1,6 @@
 use clap::Parser;
-use convy::validation::CommitMessageError;
 
-fn main() -> Result<(), CommitMessageError> {
+fn main() -> Result<(), String> {
     let cli = convy::cli::Cli::parse();
 
     match cli.commands {
@@ -10,7 +9,13 @@ fn main() -> Result<(), CommitMessageError> {
 
             let tokens = tokenizer.tokenize(&arg.commit);
 
-            convy::validation::validate_commit_message(&arg.commit, tokens)?;
+            match convy::validation::validate_commit_message(&arg.commit, tokens) {
+                Ok(_) => println!("Commit message is valid!"),
+                Err(e) => {
+                    eprintln!("Error: {}\n----\n", e);
+                    return Err("Commit message is invalid!".to_string());
+                }
+            };
             Ok(())
         }
     }

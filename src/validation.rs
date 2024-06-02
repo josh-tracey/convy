@@ -5,10 +5,9 @@ use crate::lexer::{FooterToken, Token, TokenType};
 pub enum CommitMessageError {
     MissingBreakingChangeFooter,
     InvalidType(String),
-    // ... Other potential errors
 }
 
-pub fn validate_commit_message(commit: &str, tokens: Vec<Token>) -> Result<(), CommitMessageError> {
+pub fn validate_commit_message(commit: &str, tokens: Vec<Token>) -> Result<(), String> {
     // Validation Rule 1: Check for allowed types
     if let Some(Token::Type(token_type)) = tokens.iter().find(|t| matches!(t, Token::Type(_))) {
         match token_type {
@@ -22,7 +21,12 @@ pub fn validate_commit_message(commit: &str, tokens: Vec<Token>) -> Result<(), C
             TokenType::Test => "test",
             TokenType::Build => "build",
             TokenType::Ci => "ci",
-            _ => return Err(CommitMessageError::InvalidType(token_type.to_string())),
+            _ => return Err(
+                format!(
+                    "Invalid commit type: `{}`.\n\nValid Options:\nfeat, fix, chore, docs, style, refactor, perf, test, build, and ci", 
+                    token_type.to_string()
+                )
+            ),
         };
     }
 
@@ -33,7 +37,7 @@ pub fn validate_commit_message(commit: &str, tokens: Vec<Token>) -> Result<(), C
             .iter()
             .any(|t| matches!(t, Token::Footer(FooterToken::BreakingChange, _)))
     {
-        return Err(CommitMessageError::MissingBreakingChangeFooter);
+        return Err("Missing BREAKING CHANGE footer".to_string());
     }
 
     Ok(())
