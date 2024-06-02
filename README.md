@@ -43,21 +43,17 @@ Now, every time you commit a change, Convy will validate the commit message form
 
 ## Configuration
 
-Convy allows you to define custom commit message format rules using a configuration file. The configuration file should be named `convy.yaml` and placed in the root of your Git repository.
+Convy allows you to define custom commit types in a configuration file. The configuration file should be named `.convy.toml` and placed in the root of your Git repository.
 
-Here is an example of a `convy.yaml` file that defines a simple commit message format rule:
+Here is an example of a `.convy.toml` file that defines custom commit types and disables the check for breaking changes footer:
 
-```yaml
-rules:
-  - name: "Convy Commit Message Format"
-    description: "Commit message should start with a JIRA issue key followed by a colon and a space."
-    pattern: "^[A-Z]+-[0-9]+: .+"
-    error_message: "Commit message should start with a JIRA issue key followed by a colon and a space."
+```toml
+additional_types = [
+    "revert",
+    "wip"
+]
+require_breaking_change_footer = false
 ```
-
-In the above example, the `pattern` field defines a regular expression that the commit message should match. If the commit message does not match the pattern, Convy will display the `error_message` and reject the commit.
-
-You can define multiple rules in the `convy.yaml` file to enforce different commit message format requirements.
 
 ### Generating Changelogs
 

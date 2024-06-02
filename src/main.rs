@@ -1,4 +1,8 @@
+use std::fs;
+use toml;
+
 use clap::Parser;
+use convy::validation::default_config;
 
 fn main() -> Result<(), String> {
     let cli = convy::cli::Cli::parse();
@@ -9,7 +13,15 @@ fn main() -> Result<(), String> {
 
             let tokens = tokenizer.tokenize(&arg.commit);
 
-            match convy::validation::validate_commit_message(&arg.commit, tokens) {
+            let config_path = ".convy.toml";
+            let config: convy::validation::Config = match fs::read_to_string(config_path) {
+                Ok(config_str) => toml::from_str(&config_str).unwrap_or_else(|_| default_config()),
+                Err(_) => default_config(),
+            };
+
+            println!("config: {:?}", config);
+
+            match convy::validation::validate_commit_message(&arg.commit, tokens, Some(&config)) {
                 Ok(_) => println!("Commit message is valid!"),
                 Err(e) => {
                     eprintln!("Error: {}\n----\n", e);

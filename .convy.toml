@@ -1,0 +1,2 @@
+additional_types = ["wip", "revert"]
+require_breaking_change_footer = true
