@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2024-06-02
+### Added
+- Add config file.
+- Add install script for easy install.
+
+### Changed
+- Install script update.
+- Add optimization config to cargo.toml.
+- Merge pull request #1 from josh-tracey/dependabot/cargo/rustls-0.21.12.
+- Merge pull request #2 from josh-tracey/dependabot/cargo/openssl-0.10.64.
+- Update docs with changelog generation instructions.
+- Create changelog.
+-  delete .DS_Store.
+- Bump openssl from 0.10.57 to 0.10.64 for deps.
+- Bump rustls from 0.21.7 to 0.21.12 for deps.
+- Bump rustls from 0.21.7 to 0.21.12 for deps.
+- Bump openssl from 0.10.57 to 0.10.64 for deps.
+
 ## [1.0.0] - 2024-06-02
 ### Changed
 - Update install script docs.
@@ -22,5 +40,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update tokenizer to try get description better.
 - Initial commit.
 
-[Unreleased]: https://github.com/josh-tracey/convy/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/josh-tracey/convy/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/josh-tracey/convy/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/josh-tracey/convy/releases/tag/v1.0.0
