@@ -50,6 +50,44 @@ fn main() -> Result<(), String> {
             fs::set_permissions(".git/hooks/commit-msg", fs::Permissions::from_mode(0o755))
                 .expect("Error setting permissions on commit-msg");
 
+            // git add .convy.toml
+            let output = std::process::Command::new("git")
+                .arg("add")
+                .arg(".convy.toml")
+                .output()
+                .expect("Error adding .convy.toml to git");
+
+            if !output.status.success() {
+                eprintln!("Error adding .convy.toml to git");
+                std::process::exit(1);
+            }
+
+            // git commit -m "feat: added and initialized convy"
+            let output = std::process::Command::new("git")
+                .arg("commit")
+                .arg("-m")
+                .arg("feat: added and initialized convy")
+                .output()
+                .expect("Error committing .convy.toml to git");
+
+            if !output.status.success() {
+                eprintln!("Error committing .convy.toml to git");
+                std::process::exit(1);
+            }
+
+            // git push
+            let output = std::process::Command::new("git")
+                .arg("push")
+                .output()
+                .expect("Error pushing .convy.toml to git");
+
+            if !output.status.success() {
+                eprintln!("Error pushing .convy.toml to git");
+                std::process::exit(1);
+            }
+
+            println!("Initialized convy!");
+
             Ok(())
         }
     }
