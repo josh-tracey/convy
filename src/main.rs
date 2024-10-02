@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, os::unix::fs::PermissionsExt};
 use toml;
 
 use clap::Parser;
@@ -30,6 +30,25 @@ fn main() -> Result<(), String> {
                     eprintln!("Error: {:?}", e);
                 }
             };
+
+            Ok(())
+        }
+        convy::cli::Commands::Init(_) => {
+            let default_config_str =
+                toml::to_string(&default_config()).expect("Error creating default config");
+            fs::write(".convy.toml", default_config_str)
+                .expect("Error writing default config to file");
+
+            //embed commit-msg in binary
+            let commit_msg = include_str!("commit_msg");
+
+            // write commit_msg to git hooks
+            fs::write(".git/hooks/commit-msg", commit_msg)
+                .expect("Error writing config file to git hooks");
+
+            // make commit-msg executable
+            fs::set_permissions(".git/hooks/commit-msg", fs::Permissions::from_mode(0o755))
+                .expect("Error setting permissions on commit-msg");
 
             Ok(())
         }

@@ -1,0 +1,19 @@
+#!/bin/bash
+
+commit_msg_file=$1
+
+# Read the commit message from the file
+commit_msg=$(cat "$commit_msg_file")
+
+# Run convy parse and capture the entire output (including errors)
+convy_result=$(convy parse "$commit_msg" 2>&1)  # Redirect stderr to stdout
+
+# Check if Convy's output contains any error message
+if echo "$convy_result" | grep -q "Error:"; then
+    echo -e "\033[31mError:\033[0m Commit message does not match the required format:"
+    echo "$convy_result"
+    exit 1  # Reject the commit 
+else
+    echo -e "\033[32mCommit message format is valid.\033[0m"
+    exit 0  # Allow the commit
+fi

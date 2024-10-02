@@ -10,6 +10,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
+    Init(InitArgs),
     Parse(ParseArgs),
 }
 
@@ -18,3 +19,6 @@ pub struct ParseArgs {
     #[arg(name = "commit", help = "Conventional commit message to parse")]
     pub commit: String,
 }
+
+#[derive(Debug, Args)]
+pub struct InitArgs {}
