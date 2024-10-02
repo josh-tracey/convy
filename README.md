@@ -6,7 +6,7 @@ Convy is a tool to enforce a consistent commit message format across a project. 
 
 To install Convy, run the following command:
 ```bash
-curl -sSL https://raw.githubusercontent.com/josh-tracey/convy/main/install.sh | bash
+ cargo install --git https://github.com/josh-tracey/convy
 ```
 
 ## Usage
