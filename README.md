@@ -9,6 +9,12 @@ To install Convy, run the following command:
  cargo install --git https://github.com/josh-tracey/convy
 ```
 
+if you have issues with the above method try
+
+```
+CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install --git https://github.com/josh-tracey/convy
+```
+
 ## Usage
 
 To enforce a commit message format using Convy, you need to add a commit-msg hook to your Git repository. The hook should run Convy to validate the commit message format.
