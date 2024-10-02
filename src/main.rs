@@ -2,30 +2,35 @@ use std::fs;
 use toml;
 
 use clap::Parser;
-use convy::validation::default_config;
+use convy::lexer::{default_config, parse_commit_message};
 
 fn main() -> Result<(), String> {
     let cli = convy::cli::Cli::parse();
 
     match cli.commands {
         convy::cli::Commands::Parse(arg) => {
-            let tokenizer = convy::lexer::LexicalTokenizer::new();
+            let mut config_file = fs::read_to_string(".convy.toml").unwrap_or("".to_string());
 
-            let tokens = tokenizer.tokenize(&arg.commit);
+            if config_file.is_empty() {
+                let default_config_str =
+                    toml::to_string(&default_config()).expect("Error creating default config");
+                fs::write(".convy.toml", default_config_str)
+                    .expect("Error writing default config to file");
+            }
 
-            let config_path = ".convy.toml";
-            let config: convy::validation::Config = match fs::read_to_string(config_path) {
-                Ok(config_str) => toml::from_str(&config_str).unwrap_or_else(|_| default_config()),
-                Err(_) => default_config(),
-            };
+            config_file = fs::read_to_string(".convy.toml").expect("Error reading config file");
 
-            match convy::validation::validate_commit_message(&arg.commit, tokens, Some(&config)) {
-                Ok(_) => println!("Commit message is valid!"),
+            let config = toml::from_str(&config_file).expect("Error parsing TOML");
+
+            match parse_commit_message(&arg.commit, config) {
+                Ok(_) => {
+                    println!("Commit message is valid!");
+                }
                 Err(e) => {
-                    eprintln!("Error: {}\n----\n", e);
-                    return Err("Commit message is invalid!".to_string());
+                    eprintln!("Error: {:?}", e);
                 }
             };
+
             Ok(())
         }
     }

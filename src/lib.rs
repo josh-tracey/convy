@@ -39,4 +39,3 @@ pub mod cli;
 ///
 /// For implementation details and usage examples, see the individual function and struct documentation.
 pub mod lexer;
-pub mod validation;
