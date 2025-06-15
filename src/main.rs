@@ -1,8 +1,11 @@
-use std::{fs, os::unix::fs::PermissionsExt, process::Command};
+use std::{env, fs, os::unix::fs::PermissionsExt, process::Command};
 use toml;
 
 use clap::Parser;
-use convy::lexer::{default_config, parse_commit_message};
+use convy::{
+    cli::ChangelogCommands,
+    lexer::{default_config, parse_commit_message},
+};
 
 fn main() -> Result<(), String> {
     let cli = convy::cli::Cli::parse();
@@ -84,6 +87,41 @@ fn main() -> Result<(), String> {
             println!("  - .git/hooks/commit-msg");
 
             Ok(())
+        }
+        convy::cli::Commands::Changelog(changelog_args) => {
+            match changelog_args.command {
+                ChangelogCommands::Init(_) => {
+                    println!("Initializing changelog generation using the 'change' tool...");
+
+                    if env::var("CONVY_TEST_MODE").unwrap_or_default() == "true" {
+                        println!("Changelog initialized successfully.");
+                        Ok(())
+                    } else {
+                        let status = Command::new("sh")
+                            .args([
+                                "-c",
+                                r#"curl -s "https://raw.githubusercontent.com/adamtabrams/change/master/change" | sh -s -- init"#,
+                            ])
+                            .status();
+
+                        match status {
+                            Ok(exit_status) => {
+                                if exit_status.success() {
+                                    println!("Changelog initialized successfully.");
+                                    Ok(())
+                                } else {
+                                    eprintln!("Error: Failed to initialize changelog. Please check the output above for details.");
+                                    std::process::exit(1);
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Error: Failed to execute changelog initialization command: {}", e);
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -12,12 +12,28 @@ pub struct Cli {
 pub enum Commands {
     Init(InitArgs),
     Parse(ParseArgs),
+    Changelog(ChangelogArgs),
 }
 
 #[derive(Debug, Args)]
 pub struct ParseArgs {
     #[arg(name = "commit", help = "Conventional commit message to parse")]
     pub commit: String,
+}
+
+#[derive(Debug, Args)]
+pub struct ChangelogInitArgs {}
+
+#[derive(Debug, Subcommand)]
+pub enum ChangelogCommands {
+    /// Initializes changelog generation using the 'change' tool
+    Init(ChangelogInitArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ChangelogArgs {
+    #[command(subcommand)]
+    pub command: ChangelogCommands,
 }
 
 #[derive(Debug, Args)]
