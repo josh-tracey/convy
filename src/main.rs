@@ -1,4 +1,4 @@
-use std::{fs, os::unix::fs::PermissionsExt};
+use std::{fs, os::unix::fs::PermissionsExt, process::Command};
 use toml;
 
 use clap::Parser;
@@ -9,16 +9,13 @@ fn main() -> Result<(), String> {
 
     match cli.commands {
         convy::cli::Commands::Parse(arg) => {
-            let mut config_file = fs::read_to_string(".convy.toml").unwrap_or("".to_string());
-
-            if config_file.is_empty() {
-                let default_config_str =
-                    toml::to_string(&default_config()).expect("Error creating default config");
-                fs::write(".convy.toml", default_config_str)
-                    .expect("Error writing default config to file");
-            }
-
-            config_file = fs::read_to_string(".convy.toml").expect("Error reading config file");
+            let config_file = match fs::read_to_string(".convy.toml") {
+                Ok(content) => content,
+                Err(_) => {
+                    eprintln!("Error: .convy.toml not found. Please run `convy init` to create a configuration file.");
+                    std::process::exit(1);
+                }
+            };
 
             let config = toml::from_str(&config_file).expect("Error parsing TOML");
 
@@ -34,6 +31,32 @@ fn main() -> Result<(), String> {
             Ok(())
         }
         convy::cli::Commands::Init(_) => {
+            // Check if Git is installed
+            let git_version_output = Command::new("git").arg("--version").output();
+            if git_version_output.is_err() || !git_version_output.unwrap().status.success() {
+                eprintln!("Error: Git is not installed. Please install Git and try again.");
+                std::process::exit(1);
+            }
+
+            // Check if inside a Git repository
+            let git_repo_output = Command::new("git")
+                .args(["rev-parse", "--is-inside-work-tree"])
+                .output();
+            match git_repo_output {
+                Ok(output) => {
+                    if !output.status.success()
+                        || String::from_utf8_lossy(&output.stdout).trim() != "true"
+                    {
+                        eprintln!("Error: Not inside a Git repository. Please run `convy init` from the root of a Git repository.");
+                        std::process::exit(1);
+                    }
+                }
+                Err(_) => {
+                    eprintln!("Error: Failed to check Git repository status. Make sure you are in a Git repository.");
+                    std::process::exit(1);
+                }
+            }
+
             let default_config_str =
                 toml::to_string(&default_config()).expect("Error creating default config");
             fs::write(".convy.toml", default_config_str)
@@ -43,6 +66,11 @@ fn main() -> Result<(), String> {
             let commit_msg = include_str!("commit_msg");
 
             // write commit_msg to git hooks
+            // Ensure .git/hooks directory exists
+            if !fs::metadata(".git/hooks").is_ok() {
+                fs::create_dir_all(".git/hooks")
+                    .expect("Error creating .git/hooks directory");
+            }
             fs::write(".git/hooks/commit-msg", commit_msg)
                 .expect("Error writing config file to git hooks");
 
@@ -50,43 +78,10 @@ fn main() -> Result<(), String> {
             fs::set_permissions(".git/hooks/commit-msg", fs::Permissions::from_mode(0o755))
                 .expect("Error setting permissions on commit-msg");
 
-            // git add .convy.toml
-            let output = std::process::Command::new("git")
-                .arg("add")
-                .arg(".convy.toml")
-                .output()
-                .expect("Error adding .convy.toml to git");
-
-            if !output.status.success() {
-                eprintln!("Error adding .convy.toml to git");
-                std::process::exit(1);
-            }
-
-            // git commit -m "feat: added and initialized convy"
-            let output = std::process::Command::new("git")
-                .arg("commit")
-                .arg("-m")
-                .arg("feat: added and initialized convy")
-                .output()
-                .expect("Error committing .convy.toml to git");
-
-            if !output.status.success() {
-                eprintln!("Error committing .convy.toml to git");
-                std::process::exit(1);
-            }
-
-            // git push
-            let output = std::process::Command::new("git")
-                .arg("push")
-                .output()
-                .expect("Error pushing .convy.toml to git");
-
-            if !output.status.success() {
-                eprintln!("Error pushing .convy.toml to git");
-                std::process::exit(1);
-            }
-
-            println!("Initialized convy!");
+            println!("Successfully initialized convy!");
+            println!("Please add, commit, and push the following files to your repository:");
+            println!("  - .convy.toml");
+            println!("  - .git/hooks/commit-msg");
 
             Ok(())
         }

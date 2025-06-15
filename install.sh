@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # Script version
-VERSION="v1.1.0"
+VERSION="v1.2.0"
 
 
 # Temporary directory for downloads (use user's home directory for safety)

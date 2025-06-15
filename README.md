@@ -17,10 +17,28 @@ CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install --git https://github.com/josh-tr
 
 ## Usage
 
-To enforce a commit message format using Convy, you need to add a commit-msg hook to your Git repository. The hook should run Convy to validate the commit message format.
+To get started with Convy and enforce commit message validation in your Git repository, run the `init` command:
 
-Here is an example of a commit-msg hook that uses Convy to validate the commit message format:
+```bash
+convy init
+```
 
+This command performs the following actions:
+1. Creates a default `.convy.toml` configuration file in the root of your repository if one doesn't exist.
+2. Creates (or overwrites) the `.git/hooks/commit-msg` script with the necessary logic to validate commit messages using `convy parse`.
+3. Makes the `.git/hooks/commit-msg` script executable.
+
+After running `convy init`, Convy will automatically validate your commit messages each time you make a commit.
+
+**Important Note on `convy init` Behavior:**
+Previously, the `init` command also automatically added `.convy.toml` and the hook script to Git, committed them, and pushed them. This is no longer the case. After running `convy init`, you will now be guided to manually perform the following Git operations:
+- `git add .convy.toml .git/hooks/commit-msg`
+- `git commit -m "feat: initialize convy for commit message validation"` (or a similar message)
+- `git push`
+
+This change gives you more control over your commit history.
+
+The `commit-msg` hook script installed by `convy init` contains the following logic:
 ```bash
 #!/bin/bash
 
@@ -42,10 +60,6 @@ else
     exit 0  # Allow the commit
 fi
 ```
-
-Save the above script as `.git/hooks/commit-msg` in your Git repository and make it executable.
-
-Now, every time you commit a change, Convy will validate the commit message format according to the rules you have defined.
 
 ## Configuration
 
@@ -77,4 +91,3 @@ If you have any suggestions, bug reports, or feature requests, please open an is
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
