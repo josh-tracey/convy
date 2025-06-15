@@ -75,14 +75,19 @@ additional_types = [
 require_breaking_change_footer = false
 ```
 
-### Generating Changelogs
+## Changelog Management
 
-As this this projects doesn't currently focus on generating changelogs, it is recommended to use a tool like [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) to generate changelogs.
+Convy provides commands to help manage your project's changelog.
 
-A good tool is change which can be used without installation by running the following command:
+### Initialize Changelog Generation
+
+To set up changelog generation for your project, use the `init` subcommand:
+
 ```bash
- curl -s "https://raw.githubusercontent.com/adamtabrams/change/master/change" | sh -s -- init
+convy changelog init
 ```
+
+This command utilizes the [change](https://github.com/adamtabrams/change) tool to initialize its changelog generation capabilities within your repository. It runs the necessary setup script provided by the `change` tool. After running this, you should be able to use the `change` tool's commands (e.g., `change new`, `change done`, `change release`) to manage your changelog entries. Refer to the `change` tool's documentation for further usage.
 
 ## Contributing
 
