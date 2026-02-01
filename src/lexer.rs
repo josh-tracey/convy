@@ -7,14 +7,18 @@ use std::ops::Range;
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     pub additional_types: Option<Vec<String>>, // Optional additional types
+    pub scopes: Option<Vec<String>>,           // Optional allowed scopes
     pub require_breaking_change_footer: Option<bool>,
+    pub emoji: Option<bool>,
 }
 
 // Default Configuration
 pub fn default_config() -> Config {
     Config {
         additional_types: None,
+        scopes: None,
         require_breaking_change_footer: Some(true),
+        emoji: Some(false),
     }
 }
 
@@ -145,6 +149,11 @@ pub fn parse_commit_message(input: &str, config: Config) -> Result<CommitMessage
                 // The next token should be Colon or Scope then Colon.
             }
             Token::Scope(s) => {
+                if let Some(allowed_scopes) = &config.scopes {
+                    if !allowed_scopes.contains(&s) {
+                        return Err(format!("Invalid scope: '{}'. Allowed scopes: {:?}", s, allowed_scopes));
+                    }
+                }
                 scope = Some(s);
                 position = span.end;
             }

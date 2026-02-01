@@ -1,98 +1,81 @@
 # Convy
 
-Convy is a tool to enforce a consistent commit message format across a project. It is designed to be used as a commit-msg hook in a Git repository.
+**Consistent commits, made easy.**
+
+`convy` is a tool to enforce a consistent commit message format across a project. It serves two purposes:
+1.  **Validator**: A `commit-msg` hook that rejects invalid commits.
+2.  **Wizard**: An interactive CLI (`convy commit`) to help you construct perfect Conventional Commits every time.
 
 ## Installation
 
-To install Convy, run the following command:
 ```bash
- cargo install --git https://github.com/josh-tracey/convy
+cargo install --path .
 ```
 
-if you have issues with the above method try
+## Quick Start
 
-```
-CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install --git https://github.com/josh-tracey/convy
-```
+### 1. Initialize
 
-## Usage
-
-To get started with Convy and enforce commit message validation in your Git repository, run the `init` command:
+Run this in your git repository:
 
 ```bash
 convy init
 ```
 
-This command performs the following actions:
-1. Creates a default `.convy.toml` configuration file in the root of your repository if one doesn't exist.
-2. Creates (or overwrites) the `.git/hooks/commit-msg` script with the necessary logic to validate commit messages using `convy parse`.
-3. Makes the `.git/hooks/commit-msg` script executable.
+This creates a `.convy.toml` config and installs the git hook.
 
-After running `convy init`, Convy will automatically validate your commit messages each time you make a commit.
+### 2. Commit Interactively (Recommended)
 
-**Important Note on `convy init` Behavior:**
-Previously, the `init` command also automatically added `.convy.toml` and the hook script to Git, committed them, and pushed them. This is no longer the case. After running `convy init`, you will now be guided to manually perform the following Git operations:
-- `git add .convy.toml .git/hooks/commit-msg`
-- `git commit -m "feat: initialize convy for commit message validation"` (or a similar message)
-- `git push`
+Instead of typing `git commit -m ...`, use:
 
-This change gives you more control over your commit history.
-
-The `commit-msg` hook script installed by `convy init` contains the following logic:
 ```bash
-#!/bin/bash
+convy commit --run
+```
 
-commit_msg_file=$1
+This launches an interactive wizard that asks for:
+- Type (feat, fix, etc.)
+- Scope (optional, configurable)
+- Description
+- Breaking changes
+- **Custom Footers** (Co-authored-by, References, etc.)
 
-# Read the commit message from the file
-commit_msg=$(cat "$commit_msg_file")
+It then runs `git commit` for you.
 
-# Run convy parse and capture the entire output (including errors)
-convy_result=$(convy parse "$commit_msg" 2>&1)  # Redirect stderr to stdout
+### 3. Manual Commits
 
-# Check if Convy's output contains any error message
-if echo "$convy_result" | grep -q "Error:"; then
-    echo -e "\033[31mError:\033[0m Commit message does not match the required format:"
-    echo "$convy_result"
-    exit 1  # Reject the commit 
-else
-    echo -e "\033[32mCommit message format is valid.\033[0m"
-    exit 0  # Allow the commit
-fi
+If you prefer `git commit`, the installed hook will ensure you follow the rules.
+
+```bash
+git commit -m "feat(parser): add support for emoji"
 ```
 
 ## Configuration
 
-Convy allows you to define custom commit types in a configuration file. The configuration file should be named `.convy.toml` and placed in the root of your Git repository.
-
-Here is an example of a `.convy.toml` file that defines custom commit types and disables the check for breaking changes footer:
+Customize behavior in `.convy.toml`:
 
 ```toml
-additional_types = [
-    "revert",
-    "wip"
-]
-require_breaking_change_footer = false
+# Add custom types (e.g. for specific workflows)
+additional_types = ["wip", "security"]
+
+# Restrict scopes (optional). If set, only these scopes are allowed.
+scopes = ["core", "cli", "api", "docs"]
+
+# Enforce BREAKING CHANGE footer for '!' commits
+require_breaking_change_footer = true
+
+# Enable Gitmoji (prepends ✨, 🐛, etc. to description)
+emoji = true
 ```
 
-## Changelog Management
+## Commands
 
-Convy provides commands to help manage your project's changelog.
-
-### Initialize Changelog Generation
-
-To set up changelog generation for your project, use the `init` subcommand:
-
-```bash
-convy changelog init
-```
-
-This command utilizes the [change](https://github.com/adamtabrams/change) tool to initialize its changelog generation capabilities within your repository. It runs the necessary setup script provided by the `change` tool. After running this, you should be able to use the `change` tool's commands (e.g., `change new`, `change done`, `change release`) to manage your changelog entries. Refer to the `change` tool's documentation for further usage.
-
-## Contributing
-
-If you have any suggestions, bug reports, or feature requests, please open an issue on GitHub.
+| Command | Description |
+| :--- | :--- |
+| `init` | Set up config and git hooks. |
+| `commit` | Interactive commit wizard. Use `--run` to execute git commit. |
+| `parse` | Validate a message string (used by hooks). |
+| `changelog` | Changelog management tools. |
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT

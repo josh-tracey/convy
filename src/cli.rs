@@ -13,6 +13,13 @@ pub enum Commands {
     Init(InitArgs),
     Parse(ParseArgs),
     Changelog(ChangelogArgs),
+    Commit(CommitArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct CommitArgs {
+    #[arg(short, long, help = "Run git commit after generating message")]
+    pub run: bool,
 }
 
 #[derive(Debug, Args)]
