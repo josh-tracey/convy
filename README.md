@@ -5,6 +5,7 @@
 `convy` is a tool to enforce a consistent commit message format across a project. It serves two purposes:
 1.  **Validator**: A `commit-msg` hook that rejects invalid commits.
 2.  **Wizard**: An interactive CLI (`convy commit`) to help you construct perfect Conventional Commits every time.
+3.  **Changelog**: Automated changelog generation based on your commit history.
 
 ## Installation
 
@@ -41,30 +42,30 @@ This launches an interactive wizard that asks for:
 
 It then runs `git commit` for you.
 
-### 3. Manual Commits
+### 3. Generate Changelog
 
-If you prefer `git commit`, the installed hook will ensure you follow the rules.
+Initialize a changelog:
 
 ```bash
-git commit -m "feat(parser): add support for emoji"
+convy changelog init
 ```
 
-## Configuration
+Preview changes since the last tag:
 
-Customize behavior in `.convy.toml`:
+```bash
+convy changelog generate
+```
 
-```toml
-# Add custom types (e.g. for specific workflows)
-additional_types = ["wip", "security"]
+Write them to `CHANGELOG.md` under [Unreleased]:
 
-# Restrict scopes (optional). If set, only these scopes are allowed.
-scopes = ["core", "cli", "api", "docs"]
+```bash
+convy changelog generate --write
+```
 
-# Enforce BREAKING CHANGE footer for '!' commits
-require_breaking_change_footer = true
+Release a version (move [Unreleased] to [1.0.0]):
 
-# Enable Gitmoji (prepends ✨, 🐛, etc. to description)
-emoji = true
+```bash
+convy changelog release 1.0.0
 ```
 
 ## Commands
@@ -74,7 +75,7 @@ emoji = true
 | `init` | Set up config and git hooks. |
 | `commit` | Interactive commit wizard. Use `--run` to execute git commit. |
 | `parse` | Validate a message string (used by hooks). |
-| `changelog` | Changelog management tools. |
+| `changelog` | Initialize, generate, and release changelogs. |
 
 ## License
 

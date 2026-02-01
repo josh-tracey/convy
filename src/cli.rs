@@ -31,10 +31,29 @@ pub struct ParseArgs {
 #[derive(Debug, Args)]
 pub struct ChangelogInitArgs {}
 
+#[derive(Debug, Args)]
+pub struct ChangelogGenerateArgs {
+    #[arg(short, long, help = "Write output to CHANGELOG.md (replaces/inserts Unreleased section)")]
+    pub write: bool,
+    
+    #[arg(short, long, help = "Include all commits from the beginning, ignoring tags")]
+    pub all: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ChangelogReleaseArgs {
+    #[arg(help = "The version to release (e.g. 1.0.0)")]
+    pub version: String,
+}
+
 #[derive(Debug, Subcommand)]
 pub enum ChangelogCommands {
-    /// Initializes changelog generation using the 'change' tool
+    /// Initialize a CHANGELOG.md file
     Init(ChangelogInitArgs),
+    /// Generate changelog content from git commits
+    Generate(ChangelogGenerateArgs),
+    /// Promote Unreleased changes to a specific version
+    Release(ChangelogReleaseArgs),
 }
 
 #[derive(Debug, Args)]

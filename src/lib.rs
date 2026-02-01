@@ -1,4 +1,5 @@
 pub mod cli;
+pub mod changelog;
 /// # Commit Message Parser
 ///
 /// This module provides a parser for commit messages following the Conventional Commits specification.
