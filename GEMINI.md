@@ -10,7 +10,7 @@
 - **Core Technology**: Rust (2021 edition)
 - **CLI Framework**: `clap` (v4)
 - **Parsing Engine**: `logos` for lexing commit messages according to the Conventional Commits spec.
-- **Interactivity**: `inquire` for terminal-based prompts.
+- **Interactivity**: `ratatui` for terminal-based prompts.
 - **Configuration**: TOML-based config via `.convy.toml`.
 
 ## Architecture
